@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { withBase } from 'vitepress'
 
 const lines = [
   { prompt: true, text: 'mcpx list', delay: 0 },
@@ -40,7 +41,7 @@ onMounted(() => {
       <p class="sub">Stop loading tool schemas into context.<br>Give the AI a terminal command instead.</p>
 
       <div class="actions">
-        <a href="/getting-started/installation" class="btn primary">Get Started</a>
+        <a :href="withBase('/getting-started/installation')" class="btn primary">Get Started</a>
         <a href="https://github.com/codestz/mcpx" class="btn secondary" target="_blank">GitHub</a>
       </div>
 
@@ -193,8 +194,8 @@ onMounted(() => {
       <h2>MCP tools belong in the terminal.</h2>
       <p>mcpx puts them there.</p>
       <div class="actions">
-        <a href="/getting-started/installation" class="btn primary">Get Started</a>
-        <a href="/about/why-mcpx" class="btn secondary">Read the story</a>
+        <a :href="withBase('/getting-started/installation')" class="btn primary">Get Started</a>
+        <a :href="withBase('/about/why-mcpx')" class="btn secondary">Read the story</a>
       </div>
     </section>
   </div>
