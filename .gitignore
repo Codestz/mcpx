@@ -1,0 +1,38 @@
+# Build output
+mcpx
+dist/
+
+# Go
+*.test
+*.out
+
+# Secrets — never commit these
+.env
+.env.*
+*.key
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Claude
+.claude/skills
+.agents
+skills-lock.json
+
+# MCP local config
+.mcp.json
+
+# Old docs
+docs
+
+# Website
+website/node_modules/
+website/.vitepress/cache/
+website/.vitepress/dist/
