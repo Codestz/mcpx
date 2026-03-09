@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'MCPX',
   description: 'MCP servers as CLI tools — built for AI agents',
+  base: '/mcpx/',
   head: [
     ['meta', { name: 'theme-color', content: '#000000' }],
     ['meta', { property: 'og:title', content: 'MCPX' }],
