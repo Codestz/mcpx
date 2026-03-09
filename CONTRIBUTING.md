@@ -19,7 +19,7 @@ make test
 make lint
 ```
 
-**Requirements:** Go 1.22+
+**Requirements:** Go 1.24+
 
 ## Making Changes
 

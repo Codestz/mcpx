@@ -9,7 +9,7 @@ brew install mcpx
 
 ## Go Install
 
-Requires [Go 1.22+](https://go.dev/dl/):
+Requires [Go 1.24+](https://go.dev/dl/):
 
 ```bash
 go install github.com/codestz/mcpx/cmd/mcpx@latest

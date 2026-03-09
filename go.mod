@@ -1,6 +1,6 @@
 module github.com/codestz/mcpx
 
-go 1.22
+go 1.24
 
 require (
 	github.com/fatih/color v1.18.0

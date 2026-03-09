@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24'
 
       - name: Install mcpx
         run: go install github.com/codestz/mcpx/cmd/mcpx@latest
@@ -116,7 +116,7 @@ Use `--quiet` when you only care about the exit code:
 ## Docker
 
 ```dockerfile
-FROM golang:1.22 AS builder
+FROM golang:1.24 AS builder
 RUN go install github.com/codestz/mcpx/cmd/mcpx@latest
 
 FROM ubuntu:24.04

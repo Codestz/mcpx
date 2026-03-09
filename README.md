@@ -8,7 +8,7 @@
              MCP servers as CLI tools — built for AI agents.
 ```
 
-[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/codestz/mcpx)](https://goreportcard.com/report/github.com/codestz/mcpx)
 
@@ -79,7 +79,7 @@ Session starts → 0 tokens → AI calls mcpx via Bash when needed → Full cont
 brew tap codestz/tap
 brew install mcpx
 
-# Go install (requires Go 1.22+)
+# Go install (requires Go 1.24+)
 go install github.com/codestz/mcpx/cmd/mcpx@latest
 
 # Or build from source
