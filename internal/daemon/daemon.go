@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/codestz/mcpx/internal/mcp"
@@ -94,7 +93,8 @@ func Start(serverName string, command string, args []string, env []string, idleT
 
 	// Signal handling.
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	sigs := append([]os.Signal{os.Interrupt}, extraSignals()...)
+	signal.Notify(sigCh, sigs...)
 	go func() {
 		select {
 		case sig := <-sigCh:

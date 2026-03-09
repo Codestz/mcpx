@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -33,7 +32,7 @@ func IsRunning(serverName string) bool {
 	if err != nil {
 		return false
 	}
-	if err := proc.Signal(syscall.Signal(0)); err != nil {
+	if !isProcessAlive(proc) {
 		// Process is dead — clean up stale files.
 		os.Remove(pidPath)
 		os.Remove(socketPath)
@@ -92,9 +91,7 @@ func EnsureRunning(ctx context.Context, serverName string, command string, args 
 	attr := &os.ProcAttr{
 		Dir:   "/",
 		Files: []*os.File{devNull, logFile, logFile},
-		Sys: &syscall.SysProcAttr{
-			Setsid: true,
-		},
+		Sys:   sysProcAttr(),
 	}
 
 	proc, err := os.StartProcess(self, fullArgs, attr)
@@ -149,7 +146,7 @@ func Stop(serverName string) error {
 		return fmt.Errorf("daemon: process %d not found", pid)
 	}
 
-	if err := proc.Signal(syscall.SIGTERM); err != nil {
+	if err := signalTerminate(proc); err != nil {
 		// Process already dead — clean up.
 		os.Remove(pidPath)
 		os.Remove(SocketPath(serverName))
@@ -170,7 +167,7 @@ func Stop(serverName string) error {
 			os.Remove(SocketPath(serverName))
 			return nil
 		case <-ticker.C:
-			if err := proc.Signal(syscall.Signal(0)); err != nil {
+			if !isProcessAlive(proc) {
 				// Process exited.
 				return nil
 			}
