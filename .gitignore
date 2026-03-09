@@ -1,5 +1,6 @@
 # Build output
 /mcpx
+/mcpx.exe
 dist/
 
 # Go

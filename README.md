@@ -12,6 +12,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/codestz/mcpx)](https://goreportcard.com/report/github.com/codestz/mcpx)
 
+**[Documentation](https://codestz.github.io/mcpx)** | **[Installation](https://codestz.github.io/mcpx/getting-started/installation)** | **[GitHub](https://github.com/codestz/mcpx)**
+
 ---
 
 **mcpx** wraps any [MCP](https://modelcontextprotocol.io) server into a CLI that AI agents call through Bash. Instead of loading tool schemas into context (50-100K tokens per session), the AI runs shell commands on demand.
