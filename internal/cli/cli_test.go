@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/codestz/mcpx/internal/mcp"
@@ -142,6 +144,33 @@ func TestParseToolFlags(t *testing.T) {
 			args: []string{"--config", `{"key":"value"}`},
 			want: map[string]any{"config": map[string]any{"key": "value"}},
 		},
+		{
+			name: "string flag with @file",
+			tool: mcp.Tool{
+				Name: "test",
+				InputSchema: mcp.InputSchema{
+					Type: "object",
+					Properties: map[string]mcp.PropertySchema{
+						"body": {Type: "string", Description: "Body"},
+					},
+				},
+			},
+			args: []string{"--body", "@TESTFILE"}, // placeholder, overridden in test
+			want: map[string]any{"body": "file content here"},
+		},
+	}
+
+	// Set up temp file for the @file test.
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "testbody.txt")
+	if err := os.WriteFile(tmpFile, []byte("file content here\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Patch the @file test case with the real path.
+	for i := range tests {
+		if tests[i].name == "string flag with @file" {
+			tests[i].args = []string{"--body", "@" + tmpFile}
+		}
 	}
 
 	for _, tt := range tests {
@@ -170,6 +199,71 @@ func TestParseToolFlags(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestResolveStringValue(t *testing.T) {
+	// Create a temp file for @file tests.
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "data.txt")
+	if err := os.WriteFile(tmpFile, []byte("hello from file\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		val     string
+		want    string
+		wantErr bool
+	}{
+		{"literal string", "hello", "hello", false},
+		{"@file reads file", "@" + tmpFile, "hello from file", false},
+		{"@nonexistent errors", "@/tmp/nonexistent_mcpx_test_file", "", true},
+		{"bare @ is literal", "@", "@", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveStringValue(tt.val, "test")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseToolFlagsPartial(t *testing.T) {
+	tool := &mcp.Tool{
+		Name: "test",
+		InputSchema: mcp.InputSchema{
+			Type: "object",
+			Properties: map[string]mcp.PropertySchema{
+				"name": {Type: "string", Description: "Name"},
+				"body": {Type: "string", Description: "Body"},
+			},
+			Required: []string{"name", "body"},
+		},
+	}
+
+	// parseToolFlagsPartial should not error on missing required flags.
+	got, err := parseToolFlagsPartial(tool, []string{"--name", "Foo"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["name"] != "Foo" {
+		t.Errorf("name: got %q, want %q", got["name"], "Foo")
+	}
+	if _, ok := got["body"]; ok {
+		t.Errorf("body should not be set")
 	}
 }
 
