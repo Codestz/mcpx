@@ -246,6 +246,7 @@ mcpx list                        List configured servers
 mcpx list <server> -v            List tools with all flags
 mcpx ping <server>               Health check a server
 mcpx init                        Import .mcp.json into .mcpx/config.yml
+mcpx configure                   Generate tool docs for CLAUDE.md
 
 mcpx secret set <n> <v>          Store a secret in OS keychain
 mcpx secret list                 List stored secrets
@@ -258,6 +259,16 @@ mcpx daemon stop-all             Stop all daemons
 mcpx version                     Print version
 mcpx completion bash|zsh|fish    Generate shell completions
 ```
+
+### v1.1.0 flags
+
+| Flag | Description |
+|------|-------------|
+| `--pick <path>` | Extract a JSON field from output (e.g. `--pick 0.name`) |
+| `--timeout <dur>` | Per-call timeout override (e.g. `--timeout 60s`) |
+| `@/path` | Any string flag reads value from file (e.g. `--body @/tmp/code.go`) |
+
+`--stdin` now merges with CLI flags (flags win on conflict).
 
 ### Global flags
 

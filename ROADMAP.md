@@ -2,58 +2,35 @@
 
 > What's next for mcpx — focused on impact, not infrastructure.
 
-mcpx v1.0.0 shipped with the core adapter, daemon mode, secrets, and shell completions. Everything below builds on that foundation to make the tool sharper for the people already using it.
+mcpx v1.1.0 added ergonomic enhancements (`@file`, `--pick`, `--timeout`, stdin merge, `configure`). Everything below builds on that foundation to make the tool sharper for the people already using it.
 
 ---
 
-## v1.1 — Gain & Fast Pipes
+## v1.1 — Ergonomic Enhancements ✅ (shipped 2026-03-13)
 
-**Theme:** Prove the savings. Make pipes real.
+**Theme:** Make mcpx natural for AI agents and human operators.
 
-mcpx claims to save tokens — `mcpx gain` shows the receipts. And pipes that work in a demo should work at scale.
+### Shipped
 
-### `mcpx gain` — Token savings dashboard
+- **`@file` syntax** — any string flag accepts `@/path` to read from file or `@-` for stdin. No more shell escaping.
+- **`--pick`** — extract JSON fields from output without jq (e.g. `--pick 0.name`).
+- **`--timeout`** — per-call timeout override (e.g. `--timeout 60s`).
+- **stdin merge** — `--stdin` now merges with CLI flags (flags win on conflict).
+- **`mcpx configure`** — auto-generate tool docs for CLAUDE.md from MCP server schemas.
 
-Passively tracks every call and schema size. Zero overhead — just appends a log line.
+### Deferred to later
 
-```
-$ mcpx gain
-
-  mcpx token savings
-  ──────────────────────────────────────
-
-  Today         4,218 tokens saved    (12 calls)
-  This week    38,664 tokens saved    (147 calls)
-  All time    284,910 tokens saved    (1,203 calls)
-
-  Server breakdown
-  ──────────────────────────────────────
-  serena        2,148 tok/call × 1,089 calls = 233,972 saved
-  seq-thinking    412 tok/call ×   114 calls =  46,968 saved
-
-  Performance
-  ──────────────────────────────────────
-  Avg latency       142ms (daemon)  vs  ~1,200ms (cold start)
-  Daemon hit rate    94% (1,131 / 1,203)
-  Time saved         ~19 min from daemon reuse
-```
-
-- `mcpx gain --json` — structured output for dashboards
-- `mcpx gain --history` — daily/weekly trend
-- `mcpx gain --server serena` — filter by server
-
-### Fast pipes
-
-- **Schema caching** — cache `tools/list` locally, skip MCP negotiation on repeat calls. Critical for xargs/loops where mcpx runs 20+ times.
-- **Connection reuse** — daemon calls batch over the same unix socket. Zero cold start per invocation.
-- **`--flag -` reads from stdin** — `jq '.path' | mcpx serena get_symbols_overview --relative_path -`. Single flag from pipe, not full JSON mode.
+- **`mcpx gain`** — token savings dashboard. Moved to v1.2.
+- **Schema caching** — cache `tools/list` locally. Moved to v1.2.
 
 ---
 
-## v1.2 — Config Quality of Life
+## v1.2 — Gain, Caching & Config QoL
 
-**Theme:** Remove paper cuts.
+**Theme:** Prove the savings. Remove paper cuts.
 
+- **`mcpx gain`** — token savings dashboard. Passively tracks every call and schema size. `mcpx gain --json`, `--history`, `--server`.
+- **Schema caching** — cache `tools/list` locally, skip MCP negotiation on repeat calls. Critical for xargs/loops.
 - **`mcpx sync`** — bidirectional sync between `.mcpx/config.yml` and `.mcp.json`. Stop maintaining both manually.
 - **`mcpx doctor`** — diagnose common issues: server won't start, bad config paths, stale daemons, missing binaries. One command to answer "why isn't this working?"
 - **Config validation** — catch typos, bad schemas, unreachable servers before runtime. Clear errors with line numbers.
@@ -62,11 +39,12 @@ $ mcpx gain
 
 ## v1.3 — Output Control
 
-**Theme:** Skip jq for the 80% case.
+**Theme:** Advanced output formatting.
 
 - **`--template`** — Go template strings on output: `--template "{{len .results}} found"`.
-- **`--field`** — extract a single field: `--field "results[0].path"`. Covers most simple extractions without jq.
-- **Structured exit codes** — distinct codes for tool error (1), config error (2), connection error (3), timeout (4). Scripts need this to branch correctly.
+- **Structured exit codes** — distinct code for timeout (4), in addition to tool error (1), config error (2), connection error (3). Scripts need this to branch correctly.
+
+> Note: Basic field extraction is covered by `--pick` (shipped in v1.1).
 
 ---
 

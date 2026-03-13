@@ -25,10 +25,39 @@ mcpx serena search_symbol --help
 
 ### `mcpx <server> <tool> --stdin`
 
-Read tool arguments from stdin as a JSON object instead of flags.
+Read tool arguments from stdin as a JSON object. CLI flags are merged on top (flags win on conflict).
 
 ```bash
 echo '{"name": "Auth", "include_body": true}' | mcpx serena find_symbol --stdin
+
+# Merge: stdin provides body, flag overrides name_path
+echo '{"body":"..."}' | mcpx serena replace_symbol_body --stdin --name_path Foo
+```
+
+### `@file` syntax
+
+Any string flag accepts `@/path` to read its value from a file, or `@-`/`-` to read from stdin:
+
+```bash
+mcpx serena replace_symbol_body --body @/tmp/handler.go --name_path HandleAuth
+cat handler.go | mcpx serena replace_symbol_body --body @- --name_path HandleAuth
+```
+
+### `--pick <path>`
+
+Extract a value from JSON output without jq. Supports dot-separated paths and array indices.
+
+```bash
+mcpx serena find_symbol --name_path_pattern "User*" --pick 0.name
+# → UserAuth
+```
+
+### `--timeout <duration>`
+
+Override the default call timeout for a single invocation. Uses Go duration format.
+
+```bash
+mcpx serena search_for_pattern --substring_pattern "TODO" --timeout 60s
 ```
 
 ### `mcpx <server> --help`
@@ -97,20 +126,15 @@ mcpx init
 
 ### `mcpx configure`
 
-Interactive server configuration.
+Auto-generate tool documentation for CLAUDE.md from MCP server schemas. Scans configured servers and writes per-server reference files.
 
 ```bash
 mcpx configure
-```
-
-### `mcpx <server> generate`
-
-Generate a compact reference of all tools and flags. Useful for including in `CLAUDE.md`.
-
-```bash
-mcpx serena generate
-mcpx serena generate --global    # write to global CLAUDE.md location
-mcpx serena generate --format=md # markdown format
+# Scanning MCP servers...
+#   → serena: 21 tools found
+# Generating documentation...
+#   ✓ SERENA.md written (21 tools)
+#   ✓ MCPX.md updated
 ```
 
 ---
@@ -193,3 +217,5 @@ These flags work with any command:
 | `--json` | Output raw JSON |
 | `--quiet` | Suppress all output |
 | `--dry-run` | Show what would execute without running |
+| `--pick <path>` | Extract a JSON field from output (v1.1) |
+| `--timeout <dur>` | Per-call timeout override (v1.1) |
