@@ -41,6 +41,16 @@ func buildServerCommand(name string, sc *config.ServerConfig, opts *globalOpts) 
 					opts.quiet = true
 				case "--dry-run":
 					opts.dryRun = true
+				case "--pick":
+					if i+1 < len(args) {
+						i++
+						opts.pick = args[i]
+					}
+				case "--timeout":
+					if i+1 < len(args) {
+						i++
+						opts.timeout = args[i]
+					}
 				case "--help", "-h":
 					hasHelp = true
 				default:
@@ -180,12 +190,28 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, to
 		return nil
 	}
 
-	// Parse arguments: either from stdin JSON or from flags.
+	// Parse arguments: either from stdin JSON (with optional flag merge) or from flags.
 	var toolArgs map[string]any
 	if useStdin {
 		toolArgs, err = parseStdinJSON()
 		if err != nil {
 			return fmt.Errorf("--stdin: %w", err)
+		}
+		// Merge CLI flags on top (flags win).
+		if len(filteredArgs) > 0 {
+			flagArgs, flagErr := parseToolFlagsPartial(tool, filteredArgs)
+			if flagErr != nil {
+				return enhanceParseError(flagErr, serverName, tool)
+			}
+			for k, v := range flagArgs {
+				toolArgs[k] = v
+			}
+		}
+		// Validate required fields against merged result.
+		for _, req := range tool.InputSchema.Required {
+			if _, ok := toolArgs[req]; !ok {
+				return fmt.Errorf("required field %q not provided (via --stdin or flags)", req)
+			}
 		}
 	} else {
 		toolArgs, err = parseToolFlags(tool, filteredArgs)
@@ -203,12 +229,55 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, to
 		return nil
 	}
 
-	result, err := client.CallTool(ctx, toolName, toolArgs)
+	// Apply per-call timeout if specified.
+	callCtx := ctx
+	if opts.timeout != "" {
+		d, err := time.ParseDuration(opts.timeout)
+		if err != nil {
+			return fmt.Errorf("--timeout: %w", err)
+		}
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeout(ctx, d)
+		defer cancel()
+	}
+
+	result, err := client.CallTool(callCtx, toolName, toolArgs)
 	if err != nil {
 		return err
 	}
 
+	// Extract a specific field if --pick was specified.
+	if opts.pick != "" {
+		val, err := pickField(result, opts.pick)
+		if err != nil {
+			return fmt.Errorf("--pick %s: %w", opts.pick, err)
+		}
+		fmt.Fprintln(os.Stdout, val)
+		return nil
+	}
+
 	return out.printResult(result)
+}
+
+// resolveStringValue resolves @file / @- / - syntax for flag values.
+// "-" or "@-" reads from stdin, "@<path>" reads a file, bare "@" is literal.
+func resolveStringValue(val, flagName string) (string, error) {
+	if val == "-" || val == "@-" {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", fmt.Errorf("read stdin for --%s: %w", flagName, err)
+		}
+		return strings.TrimRight(string(data), "\n"), nil
+	}
+	if len(val) > 1 && val[0] == '@' {
+		path := val[1:]
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read file for --%s: %w", flagName, err)
+		}
+		return strings.TrimRight(string(data), "\n"), nil
+	}
+	return val, nil
 }
 
 // parseStdinJSON reads a JSON object from stdin and returns it as tool arguments.
@@ -255,7 +324,18 @@ func enhanceParseError(err error, serverName string, tool *mcp.Tool) error {
 }
 
 // parseToolFlags builds flags from a tool's JSON schema and parses rawArgs.
+// Required flags are enforced.
 func parseToolFlags(tool *mcp.Tool, rawArgs []string) (map[string]any, error) {
+	return parseToolFlagsInternal(tool, rawArgs, false)
+}
+
+// parseToolFlagsPartial is like parseToolFlags but does not enforce required flags.
+// Used when merging CLI flags on top of --stdin JSON.
+func parseToolFlagsPartial(tool *mcp.Tool, rawArgs []string) (map[string]any, error) {
+	return parseToolFlagsInternal(tool, rawArgs, true)
+}
+
+func parseToolFlagsInternal(tool *mcp.Tool, rawArgs []string, skipRequired bool) (map[string]any, error) {
 	tmpCmd := &cobra.Command{
 		Use:           tool.Name,
 		SilenceUsage:  true,
@@ -306,9 +386,11 @@ func parseToolFlags(tool *mcp.Tool, rawArgs []string) (map[string]any, error) {
 		}
 	}
 
-	for _, req := range tool.InputSchema.Required {
-		if _, ok := flags[req]; ok {
-			tmpCmd.MarkFlagRequired(req)
+	if !skipRequired {
+		for _, req := range tool.InputSchema.Required {
+			if _, ok := flags[req]; ok {
+				tmpCmd.MarkFlagRequired(req)
+			}
 		}
 	}
 
@@ -325,13 +407,9 @@ func parseToolFlags(tool *mcp.Tool, rawArgs []string) (map[string]any, error) {
 
 		switch fv.kind {
 		case "string":
-			val := *fv.strVal
-			if val == "-" {
-				data, err := io.ReadAll(os.Stdin)
-				if err != nil {
-					return nil, fmt.Errorf("read stdin for --%s: %w", name, err)
-				}
-				val = strings.TrimRight(string(data), "\n")
+			val, err := resolveStringValue(*fv.strVal, name)
+			if err != nil {
+				return nil, err
 			}
 			result[name] = val
 		case "integer":
@@ -341,13 +419,9 @@ func parseToolFlags(tool *mcp.Tool, rawArgs []string) (map[string]any, error) {
 		case "boolean":
 			result[name] = *fv.boolVal
 		case "array":
-			val := *fv.strVal
-			if val == "-" {
-				data, err := io.ReadAll(os.Stdin)
-				if err != nil {
-					return nil, fmt.Errorf("read stdin for --%s: %w", name, err)
-				}
-				val = strings.TrimRight(string(data), "\n")
+			val, err := resolveStringValue(*fv.strVal, name)
+			if err != nil {
+				return nil, err
 			}
 			var arr []any
 			if err := json.Unmarshal([]byte(val), &arr); err != nil {
@@ -360,13 +434,9 @@ func parseToolFlags(tool *mcp.Tool, rawArgs []string) (map[string]any, error) {
 			}
 			result[name] = arr
 		case "object":
-			val := *fv.strVal
-			if val == "-" {
-				data, err := io.ReadAll(os.Stdin)
-				if err != nil {
-					return nil, fmt.Errorf("read stdin for --%s: %w", name, err)
-				}
-				val = strings.TrimRight(string(data), "\n")
+			val, err := resolveStringValue(*fv.strVal, name)
+			if err != nil {
+				return nil, err
 			}
 			var obj map[string]any
 			if err := json.Unmarshal([]byte(val), &obj); err != nil {

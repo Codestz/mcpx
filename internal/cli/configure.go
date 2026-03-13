@@ -128,6 +128,39 @@ func generateMCPXMD(cfg *config.Config) string {
 	b.WriteString("3. Call: `mcpx <server> <tool> --flag value`\n")
 	b.WriteString("4. For long args: `printf '{\"key\":\"value\"}' | mcpx <server> <tool> --stdin`\n")
 
+	b.WriteString("\n## Large Content: @file syntax\n\n")
+	b.WriteString("Any string flag accepts `@/path` to read from a file or `@-`/`-` to read from stdin:\n")
+	b.WriteString("```bash\n")
+	b.WriteString("mcpx <server> <tool> --body @/tmp/code.go   # Read file into --body\n")
+	b.WriteString("mcpx <server> <tool> --body @-              # Read stdin into --body\n")
+	b.WriteString("mcpx <server> <tool> --body -               # Same (backward compat)\n")
+	b.WriteString("```\n")
+
+	b.WriteString("\n## Output Extraction: --pick\n\n")
+	b.WriteString("Extract a JSON field from the result without jq:\n")
+	b.WriteString("```bash\n")
+	b.WriteString("mcpx <server> <tool> --pick field.path      # Dot-separated path\n")
+	b.WriteString("mcpx <server> <tool> --pick items.0.name    # Array index access\n")
+	b.WriteString("```\n")
+
+	b.WriteString("\n## Timeout Override: --timeout\n\n")
+	b.WriteString("Override the default call timeout for a single invocation:\n")
+	b.WriteString("```bash\n")
+	b.WriteString("mcpx <server> <tool> --timeout 60s          # Go duration format\n")
+	b.WriteString("```\n")
+
+	b.WriteString("\n## Stdin Merge\n\n")
+	b.WriteString("`--stdin` can be combined with CLI flags. Flags win on conflict:\n")
+	b.WriteString("```bash\n")
+	b.WriteString("echo '{\"body\":\"content\"}' | mcpx <server> <tool> --stdin --name_path Foo\n")
+	b.WriteString("```\n")
+
+	b.WriteString("\n## Tips for AI Agents\n\n")
+	b.WriteString("- Use `--body @/tmp/file` for large content to avoid shell escaping\n")
+	b.WriteString("- Use `--pick field` instead of piping through jq for single fields\n")
+	b.WriteString("- Combine `--stdin` with flags for mixed large+small arguments\n")
+	b.WriteString("- Use `--timeout 120s` for long-running operations\n")
+
 	return b.String()
 }
 

@@ -18,6 +18,8 @@ type globalOpts struct {
 	jsonOutput bool
 	quiet      bool
 	dryRun     bool
+	pick       string
+	timeout    string
 }
 
 func (o *globalOpts) outputMode() outputMode {
