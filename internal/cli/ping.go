@@ -11,6 +11,7 @@ import (
 )
 
 // pingCmd creates the "ping" command for health-checking an MCP server.
+// Health is verified by connecting (which includes Initialize) and listing tools.
 func pingCmd(opts *globalOpts) *cobra.Command {
 	return &cobra.Command{
 		Use:               "ping <server>",

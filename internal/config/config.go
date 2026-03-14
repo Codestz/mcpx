@@ -22,6 +22,14 @@ type ServerConfig struct {
 	Daemon         bool              `yaml:"daemon"`
 	StartupTimeout string            `yaml:"startup_timeout"`
 	URL            string            `yaml:"url"`
+	Headers        map[string]string `yaml:"headers"`
+	Auth           *AuthConfig       `yaml:"auth"`
+}
+
+// AuthConfig holds authentication settings for remote transports.
+type AuthConfig struct {
+	Type  string `yaml:"type"`
+	Token string `yaml:"token"`
 }
 
 // Load reads the global (~/.mcpx/config.yml) and project (.mcpx/config.yml)
@@ -132,6 +140,10 @@ func Validate(cfg *Config) error {
 		case "stdio", "":
 			if sc.Command == "" {
 				return fmt.Errorf("config: server %q: command is required for stdio transport", name)
+			}
+		case "http":
+			if sc.URL == "" {
+				return fmt.Errorf("config: server %q: url is required for http transport", name)
 			}
 		case "sse":
 			if sc.URL == "" {

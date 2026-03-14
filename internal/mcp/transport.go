@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// NotificationHandler is a callback for server-initiated notifications.
+type NotificationHandler func(method string, params json.RawMessage)
+
 // Transport defines the interface for communicating with an MCP server.
 type Transport interface {
 	// Send sends a request and waits for the corresponding response.
@@ -22,6 +25,12 @@ type Transport interface {
 	SendNotification(ctx context.Context, notif *Request) error
 	// Close shuts down the transport and releases resources.
 	Close() error
+}
+
+// NotificationAware is optionally implemented by transports that support
+// server-initiated notification callbacks.
+type NotificationAware interface {
+	SetNotificationHandler(handler NotificationHandler)
 }
 
 // StdioTransport communicates with an MCP server subprocess via stdin/stdout JSON-RPC.
@@ -46,6 +55,8 @@ type StdioTransport struct {
 	// dead = "subprocess died unexpectedly".
 	dead     chan struct{}
 	deadOnce sync.Once
+
+	notifHandler NotificationHandler
 }
 
 // NewStdioTransport spawns a subprocess and returns a transport that communicates
@@ -195,6 +206,11 @@ func (t *StdioTransport) writeJSON(v any) error {
 	return nil
 }
 
+// SetNotificationHandler sets a callback for server-initiated notifications.
+func (t *StdioTransport) SetNotificationHandler(handler NotificationHandler) {
+	t.notifHandler = handler
+}
+
 // Dead returns a channel that is closed when the subprocess's stdout pipe closes,
 // indicating the MCP server process has died unexpectedly.
 func (t *StdioTransport) Dead() <-chan struct{} {
@@ -229,7 +245,13 @@ func (t *StdioTransport) readLoop() {
 		}
 
 		if resp.ID == nil {
-			// Server-initiated notification; ignore for now.
+			// Server-initiated notification.
+			var notif Notification
+			if err := json.Unmarshal(line, &notif); err == nil && notif.Method != "" {
+				if t.notifHandler != nil {
+					t.notifHandler(notif.Method, notif.Params)
+				}
+			}
 			continue
 		}
 

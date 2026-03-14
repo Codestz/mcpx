@@ -33,7 +33,7 @@ func (m *mockTransport) Close() error {
 // reqID safely extracts the request ID, returning 0 for notifications.
 func reqID(req *Request) int64 {
 	if req.ID != nil {
-		return reqID(req)
+		return *req.ID
 	}
 	return 0
 }
@@ -334,5 +334,149 @@ func TestRPCErrorFormat(t *testing.T) {
 	want := "rpc error (code -32601): method not found"
 	if e.Error() != want {
 		t.Errorf("RPCError.Error() = %q, want %q", e.Error(), want)
+	}
+}
+
+func TestInitializeParsesCaps(t *testing.T) {
+	mt := &mockTransport{
+		handler: func(req *Request) (*Response, error) {
+			switch req.Method {
+			case "initialize":
+				return jsonResponse(reqID(req), map[string]any{
+					"protocolVersion": "2025-11-25",
+					"serverInfo":      map[string]any{"name": "cap-server", "version": "2.0"},
+					"capabilities": map[string]any{
+						"tools": map[string]any{"listChanged": true},
+					},
+				}), nil
+			case "notifications/initialized":
+				return &Response{JSONRPC: "2.0"}, nil
+			default:
+				return nil, errors.New("unexpected method")
+			}
+		},
+	}
+
+	c := NewClient(mt)
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	info := c.ServerInfo()
+	if info.Name != "cap-server" || info.Version != "2.0" {
+		t.Errorf("ServerInfo = %+v, want name=cap-server version=2.0", info)
+	}
+
+	caps := c.ServerCapabilities()
+	if caps.Tools == nil || !caps.Tools.ListChanged {
+		t.Errorf("ServerCapabilities.Tools.ListChanged = false, want true")
+	}
+}
+
+func TestListToolsPaginated(t *testing.T) {
+	callCount := 0
+	mt := &mockTransport{
+		handler: func(req *Request) (*Response, error) {
+			callCount++
+
+			// Check if cursor was sent.
+			var cursor string
+			if req.Params != nil {
+				if params, ok := req.Params.(map[string]any); ok {
+					if c, ok := params["cursor"].(string); ok {
+						cursor = c
+					}
+				}
+			}
+
+			switch cursor {
+			case "":
+				// First page.
+				next := "page2"
+				return jsonResponse(reqID(req), listToolsResult{
+					Tools:      []Tool{{Name: "tool_a", Description: "A"}},
+					NextCursor: &next,
+				}), nil
+			case "page2":
+				// Second page.
+				next := "page3"
+				return jsonResponse(reqID(req), listToolsResult{
+					Tools:      []Tool{{Name: "tool_b", Description: "B"}},
+					NextCursor: &next,
+				}), nil
+			case "page3":
+				// Last page (no cursor).
+				return jsonResponse(reqID(req), listToolsResult{
+					Tools: []Tool{{Name: "tool_c", Description: "C"}},
+				}), nil
+			default:
+				return nil, errors.New("unexpected cursor: " + cursor)
+			}
+		},
+	}
+
+	c := NewClient(mt)
+	tools, err := c.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("ListTools() error = %v", err)
+	}
+
+	if len(tools) != 3 {
+		t.Fatalf("ListTools() returned %d tools, want 3", len(tools))
+	}
+
+	names := []string{tools[0].Name, tools[1].Name, tools[2].Name}
+	want := []string{"tool_a", "tool_b", "tool_c"}
+	for i, n := range names {
+		if n != want[i] {
+			t.Errorf("tool[%d].Name = %q, want %q", i, n, want[i])
+		}
+	}
+
+	if callCount != 3 {
+		t.Errorf("expected 3 requests (3 pages), got %d", callCount)
+	}
+}
+
+func TestPing(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler func(req *Request) (*Response, error)
+		wantErr bool
+	}{
+		{
+			name: "successful ping",
+			handler: func(req *Request) (*Response, error) {
+				if req.Method != "ping" {
+					return nil, errors.New("expected ping method, got " + req.Method)
+				}
+				return jsonResponse(reqID(req), map[string]any{}), nil
+			},
+			wantErr: false,
+		},
+		{
+			name: "ping transport error",
+			handler: func(req *Request) (*Response, error) {
+				return nil, errors.New("connection lost")
+			},
+			wantErr: true,
+		},
+		{
+			name: "ping rpc error",
+			handler: func(req *Request) (*Response, error) {
+				return errorResponse(reqID(req), -32601, "method not found"), nil
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient(&mockTransport{handler: tt.handler})
+			err := c.Ping(context.Background())
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Ping() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
 }
