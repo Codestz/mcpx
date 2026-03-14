@@ -48,11 +48,33 @@ func (o *output) printResult(result *mcp.CallResult) error {
 		return o.printJSON(result)
 	}
 
-	// Pretty mode: print text content, one block per line.
+	// Pretty mode: print content blocks.
 	for _, c := range result.Content {
 		switch c.Type {
 		case "text":
 			fmt.Fprintln(o.stdout, c.Text)
+		case "image":
+			mime := c.MimeType
+			if mime == "" {
+				mime = "unknown"
+			}
+			fmt.Fprintf(o.stdout, "[image: %s, %d bytes base64]\n", mime, len(c.Data))
+		case "audio":
+			mime := c.MimeType
+			if mime == "" {
+				mime = "unknown"
+			}
+			fmt.Fprintf(o.stdout, "[audio: %s, %d bytes base64]\n", mime, len(c.Data))
+		case "resource":
+			if c.Resource != nil {
+				if c.Resource.Text != "" {
+					fmt.Fprintf(o.stdout, "[resource: %s]\n%s\n", c.Resource.URI, c.Resource.Text)
+				} else {
+					fmt.Fprintf(o.stdout, "[resource: %s, %d bytes base64]\n", c.Resource.URI, len(c.Resource.Blob))
+				}
+			} else {
+				fmt.Fprintln(o.stdout, "[resource content]")
+			}
 		default:
 			fmt.Fprintf(o.stdout, "[%s content]\n", c.Type)
 		}

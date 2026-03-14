@@ -185,6 +185,19 @@ func TestValidate(t *testing.T) {
 			}},
 		},
 		{
+			name: "valid http",
+			cfg: &Config{Servers: map[string]*ServerConfig{
+				"s": {Transport: "http", URL: "https://mcp.example.com"},
+			}},
+		},
+		{
+			name: "missing url for http",
+			cfg: &Config{Servers: map[string]*ServerConfig{
+				"s": {Transport: "http"},
+			}},
+			wantErr: true,
+		},
+		{
 			name: "missing command for stdio",
 			cfg: &Config{Servers: map[string]*ServerConfig{
 				"s": {Transport: "stdio"},

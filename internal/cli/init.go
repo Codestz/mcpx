@@ -143,6 +143,9 @@ func convertMCPJSON(mcp *mcpJSON) *mcpxConfig {
 
 		// Determine transport.
 		switch entry.Type {
+		case "streamable-http", "http":
+			sc.Transport = "http"
+			sc.URL = entry.URL
 		case "sse":
 			sc.Transport = "sse"
 			sc.URL = entry.URL

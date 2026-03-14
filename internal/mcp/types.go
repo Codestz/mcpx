@@ -60,6 +60,30 @@ type PropertySchema struct {
 	Items       *PropertySchema `json:"items,omitempty"`
 }
 
+// InitializeResult holds the server's response to an initialize request.
+type InitializeResult struct {
+	ProtocolVersion string             `json:"protocolVersion"`
+	Capabilities    ServerCapabilities `json:"capabilities"`
+	ServerInfo      ServerInfo         `json:"serverInfo"`
+}
+
+// ServerCapabilities describes what the server supports.
+type ServerCapabilities struct {
+	Tools   *ToolsCapability `json:"tools,omitempty"`
+	Logging *struct{}        `json:"logging,omitempty"`
+}
+
+// ToolsCapability describes tool-related capabilities.
+type ToolsCapability struct {
+	ListChanged bool `json:"listChanged,omitempty"`
+}
+
+// ServerInfo identifies the MCP server.
+type ServerInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
 // CallResult is the result of a tools/call request.
 type CallResult struct {
 	Content []Content `json:"content"`
@@ -68,8 +92,26 @@ type CallResult struct {
 
 // Content represents a single content block in a call result.
 type Content struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type     string           `json:"type"`
+	Text     string           `json:"text,omitempty"`
+	Data     string           `json:"data,omitempty"`     // base64 for image/audio
+	MimeType string           `json:"mimeType,omitempty"`
+	Resource *ResourceContent `json:"resource,omitempty"`
+}
+
+// ResourceContent represents an embedded resource in a content block.
+type ResourceContent struct {
+	URI      string `json:"uri"`
+	MimeType string `json:"mimeType,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Blob     string `json:"blob,omitempty"` // base64
+}
+
+// Notification represents a server-initiated JSON-RPC notification.
+type Notification struct {
+	JSONRPC string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
 }
 
 // Sentinel errors.

@@ -452,9 +452,87 @@ func parseToolFlagsInternal(tool *mcp.Tool, rawArgs []string, skipRequired bool)
 }
 
 // connectServer resolves variables and connects to the MCP server.
-// If the server has daemon: true, it ensures a daemon is running and connects
-// via unix socket. Otherwise, it spawns a fresh subprocess.
+// Routes to the appropriate transport based on config: http, sse, daemon, or stdio.
 func connectServer(ctx context.Context, name string, sc *config.ServerConfig) (*mcp.Client, func(), error) {
+	timeout := 30 * time.Second
+	if sc.StartupTimeout != "" {
+		if d, parseErr := time.ParseDuration(sc.StartupTimeout); parseErr == nil {
+			timeout = d
+		}
+	}
+
+	switch sc.Transport {
+	case "http":
+		return connectHTTP(ctx, name, sc, timeout)
+	case "sse":
+		return connectSSE(ctx, name, sc, timeout)
+	default:
+		return connectStdio(ctx, name, sc, timeout)
+	}
+}
+
+// connectHTTP connects via the Streamable HTTP transport.
+func connectHTTP(ctx context.Context, name string, sc *config.ServerConfig, timeout time.Duration) (*mcp.Client, func(), error) {
+	headers, err := resolveHeaders(sc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("server %q: %w", name, err)
+	}
+
+	url, err := resolveURL(sc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("server %q: %w", name, err)
+	}
+
+	transport := mcp.NewHTTPTransport(url, headers)
+	client := mcp.NewClient(transport)
+
+	initCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	if err := client.Initialize(initCtx); err != nil {
+		transport.Close()
+		return nil, nil, fmt.Errorf("server %q: initialize: %w", name, err)
+	}
+
+	cleanup := func() { client.Close() }
+	return client, cleanup, nil
+}
+
+// connectSSE connects via the legacy SSE transport.
+func connectSSE(ctx context.Context, name string, sc *config.ServerConfig, timeout time.Duration) (*mcp.Client, func(), error) {
+	headers, err := resolveHeaders(sc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("server %q: %w", name, err)
+	}
+
+	url, err := resolveURL(sc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("server %q: %w", name, err)
+	}
+
+	// Use the parent context for the SSE stream — not a short-lived timeout context,
+	// since the SSE body reader stays open for the lifetime of the transport.
+	transport, err := mcp.NewSSETransport(ctx, url, headers)
+	if err != nil {
+		return nil, nil, fmt.Errorf("server %q: sse connect: %w", name, err)
+	}
+
+	client := mcp.NewClient(transport)
+
+	initCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	if err := client.Initialize(initCtx); err != nil {
+		transport.Close()
+		return nil, nil, fmt.Errorf("server %q: initialize: %w", name, err)
+	}
+
+	cleanup := func() { client.Close() }
+	return client, cleanup, nil
+}
+
+// connectStdio connects via stdio (direct or daemon mode).
+func connectStdio(ctx context.Context, name string, sc *config.ServerConfig, timeout time.Duration) (*mcp.Client, func(), error) {
 	resolvedArgs, resolvedEnv, err := resolveServerConfig(sc)
 	if err != nil {
 		return nil, nil, fmt.Errorf("server %q: %w", name, err)
@@ -463,13 +541,6 @@ func connectServer(ctx context.Context, name string, sc *config.ServerConfig) (*
 	envSlice := make([]string, 0, len(resolvedEnv))
 	for k, v := range resolvedEnv {
 		envSlice = append(envSlice, k+"="+v)
-	}
-
-	timeout := 30 * time.Second
-	if sc.StartupTimeout != "" {
-		if d, parseErr := time.ParseDuration(sc.StartupTimeout); parseErr == nil {
-			timeout = d
-		}
 	}
 
 	// Daemon mode: connect via unix socket to a long-running process.
@@ -508,6 +579,41 @@ func connectServer(ctx context.Context, name string, sc *config.ServerConfig) (*
 
 	cleanup := func() { client.Close() }
 	return client, cleanup, nil
+}
+
+// resolveHeaders builds the HTTP headers map from config, including auth.
+func resolveHeaders(sc *config.ServerConfig) (map[string]string, error) {
+	projectRoot, _ := findProjectRoot()
+	secrets := secret.NewKeyringStore()
+	res := resolver.New(projectRoot, secrets)
+
+	headers := make(map[string]string)
+	for k, v := range sc.Headers {
+		resolved, err := res.Resolve(v)
+		if err != nil {
+			return nil, fmt.Errorf("resolve header %q: %w", k, err)
+		}
+		headers[k] = resolved
+	}
+
+	// Apply auth config.
+	if sc.Auth != nil && sc.Auth.Type == "bearer" && sc.Auth.Token != "" {
+		token, err := res.Resolve(sc.Auth.Token)
+		if err != nil {
+			return nil, fmt.Errorf("resolve auth token: %w", err)
+		}
+		headers["Authorization"] = "Bearer " + token
+	}
+
+	return headers, nil
+}
+
+// resolveURL resolves dynamic variables in the server URL.
+func resolveURL(sc *config.ServerConfig) (string, error) {
+	projectRoot, _ := findProjectRoot()
+	secrets := secret.NewKeyringStore()
+	res := resolver.New(projectRoot, secrets)
+	return res.Resolve(sc.URL)
 }
 
 // resolveServerConfig resolves $(var) patterns in a server config.

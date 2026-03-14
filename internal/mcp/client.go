@@ -8,7 +8,9 @@ import (
 
 // Client is a high-level MCP protocol client.
 type Client struct {
-	transport Transport
+	transport  Transport
+	serverCaps ServerCapabilities
+	serverInfo ServerInfo
 }
 
 // NewClient creates a new MCP client using the given transport.
@@ -20,11 +22,11 @@ func NewClient(t Transport) *Client {
 // validates the server response, then sends "notifications/initialized".
 func (c *Client) Initialize(ctx context.Context) error {
 	params := map[string]any{
-		"protocolVersion": "2024-11-05",
+		"protocolVersion": "2025-11-25",
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
 			"name":    "mcpx",
-			"version": "0.1.0",
+			"version": "1.1.0",
 		},
 	}
 
@@ -40,36 +42,79 @@ func (c *Client) Initialize(ctx context.Context) error {
 		return fmt.Errorf("%w: %s", ErrInitFailed, resp.Error.Error())
 	}
 
+	// Parse server capabilities and info.
+	var result InitializeResult
+	if resp.Result != nil {
+		if err := json.Unmarshal(resp.Result, &result); err == nil {
+			c.serverCaps = result.Capabilities
+			c.serverInfo = result.ServerInfo
+		}
+	}
+
 	// Send initialized notification.
 	return c.transport.SendNotification(ctx, &Request{
 		Method: "notifications/initialized",
 	})
 }
 
-// listToolsResult is used to unmarshal the tools/list response.
-type listToolsResult struct {
-	Tools []Tool `json:"tools"`
+// ServerCapabilities returns the capabilities reported by the server.
+func (c *Client) ServerCapabilities() ServerCapabilities {
+	return c.serverCaps
 }
 
-// ListTools fetches the list of tools from the MCP server.
+// ServerInfo returns the server identity information.
+func (c *Client) ServerInfo() ServerInfo {
+	return c.serverInfo
+}
+
+// listToolsResult is used to unmarshal the tools/list response.
+type listToolsResult struct {
+	Tools      []Tool  `json:"tools"`
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// ListTools fetches the list of tools from the MCP server, handling pagination.
 func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
-	resp, err := c.transport.Send(ctx, &Request{
-		Method: "tools/list",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("mcp: list tools: %w", err)
+	var allTools []Tool
+	var cursor *string
+
+	for {
+		params := map[string]any{}
+		if cursor != nil {
+			params["cursor"] = *cursor
+		}
+
+		var reqParams any
+		if len(params) > 0 {
+			reqParams = params
+		}
+
+		resp, err := c.transport.Send(ctx, &Request{
+			Method: "tools/list",
+			Params: reqParams,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("mcp: list tools: %w", err)
+		}
+
+		if resp.Error != nil {
+			return nil, resp.Error
+		}
+
+		var result listToolsResult
+		if err := json.Unmarshal(resp.Result, &result); err != nil {
+			return nil, fmt.Errorf("mcp: unmarshal tools: %w", err)
+		}
+
+		allTools = append(allTools, result.Tools...)
+
+		if result.NextCursor == nil || *result.NextCursor == "" {
+			break
+		}
+		cursor = result.NextCursor
 	}
 
-	if resp.Error != nil {
-		return nil, resp.Error
-	}
-
-	var result listToolsResult
-	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return nil, fmt.Errorf("mcp: unmarshal tools: %w", err)
-	}
-
-	return result.Tools, nil
+	return allTools, nil
 }
 
 // CallTool invokes a tool on the MCP server with the given arguments.
@@ -109,6 +154,20 @@ func (c *Client) CallTool(ctx context.Context, name string, args map[string]any)
 	}
 
 	return &result, nil
+}
+
+// Ping sends a ping request to the server and returns an error if unreachable.
+func (c *Client) Ping(ctx context.Context) error {
+	resp, err := c.transport.Send(ctx, &Request{
+		Method: "ping",
+	})
+	if err != nil {
+		return fmt.Errorf("mcp: ping: %w", err)
+	}
+	if resp.Error != nil {
+		return resp.Error
+	}
+	return nil
 }
 
 // Close closes the underlying transport.
