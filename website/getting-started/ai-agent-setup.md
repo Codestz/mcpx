@@ -12,6 +12,9 @@ Add to your project's `CLAUDE.md`:
 This project uses mcpx for MCP tool access. Available commands:
 - `mcpx list` — discover servers and tools
 - `mcpx <server> <tool> --help` — get usage for any tool
+- `mcpx <server> info` — check server capabilities
+- `mcpx <server> prompt list` — list available prompts
+- `mcpx <server> resource list` — list available resources
 - Call tools via Bash as needed
 
 Configured servers:

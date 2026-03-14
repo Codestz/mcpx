@@ -20,7 +20,7 @@ export default defineConfig({
       { text: 'Troubleshooting', link: '/troubleshooting/' },
       { text: 'Examples', link: '/examples/serena' },
       {
-        text: 'v1.0.0',
+        text: 'v1.3.0',
         items: [
           { text: 'Changelog', link: '/about/changelog' },
           { text: 'GitHub', link: 'https://github.com/codestz/mcpx' },

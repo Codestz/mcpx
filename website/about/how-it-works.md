@@ -35,10 +35,11 @@ What happens when you run `mcpx serena search_symbol --name "Auth"`:
 
 mcpx implements the [Model Context Protocol](https://modelcontextprotocol.io) client side:
 
-- **Transport**: JSON-RPC 2.0 over stdin/stdout (line-delimited)
+- **Transport**: JSON-RPC 2.0 over stdin/stdout (line-delimited), HTTP, or SSE
 - **Handshake**: `initialize` request/response on first connection
-- **Discovery**: `tools/list` to get available tools with schemas
-- **Calling**: `tools/call` with tool name and arguments
+- **Tools**: `tools/list` + `tools/call` — discover and invoke tools
+- **Prompts**: `prompts/list` + `prompts/get` — discover and get prompt templates
+- **Resources**: `resources/list` + `resources/templates/list` + `resources/read` — discover and read resources
 
 ### JSON-RPC Communication
 
