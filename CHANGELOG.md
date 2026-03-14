@@ -24,6 +24,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Server capabilities struct extended with `Prompts` and `Resources` fields.
 - Client version bumped to `1.3.0` in MCP handshake.
 
+## [1.2.0] - 2026-03-13
+
+### Added
+
+- **Streamable HTTP transport** — `transport: http` with POST-based JSON-RPC, dual content-type handling (application/json + text/event-stream), session management via `Mcp-Session-Id`, and DELETE on close.
+- **Legacy SSE transport** — `transport: sse` with persistent GET stream for responses, POST for requests, and endpoint discovery via SSE events.
+- **Protocol version upgrade** — updated from `2024-11-05` to `2025-11-25` (MCP spec compliance).
+- **Server capabilities parsing** — `ServerCapabilities` and `ServerInfo` parsed from Initialize response.
+- **Paginated tools/list** — cursor-based pagination support for servers with many tools.
+- **Ping** — `client.Ping()` method for server health checks.
+- **Expanded content types** — image, audio, and embedded resource content blocks with base64 display.
+- **Headers and auth** — `headers` map and `auth.type: bearer` / `auth.token` config fields for remote transports.
+- **URL variable resolution** — `$(var)` patterns resolved in server URLs and headers.
+
+### Changed
+
+- Go minimum bumped to 1.26.1 to fix stdlib vulnerabilities.
+
 ## [1.1.0] - 2026-03-13
 
 ### Added
