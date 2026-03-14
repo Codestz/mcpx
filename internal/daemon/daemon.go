@@ -25,8 +25,9 @@ type Daemon struct {
 	socketPath string
 	pidPath    string
 
-	transport *mcp.StdioTransport
-	listener  net.Listener
+	transport  *mcp.StdioTransport
+	listener   net.Listener
+	initResult json.RawMessage // cached InitializeResult from handshake
 
 	idleTimeout  time.Duration
 	lastActivity atomic.Value // stores time.Time
@@ -52,10 +53,9 @@ func Start(serverName string, command string, args []string, env []string, idleT
 	}
 
 	// MCP handshake — done once at daemon start.
-	client := mcp.NewClient(transport)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	err = client.Initialize(ctx)
-	cancel()
+	// We perform the handshake manually to capture the raw InitializeResult
+	// so we can replay it to clients that send "initialize" requests.
+	initResult, err := performHandshake(transport)
 	if err != nil {
 		transport.Close()
 		return fmt.Errorf("daemon: initialize %q: %w", serverName, err)
@@ -84,6 +84,7 @@ func Start(serverName string, command string, args []string, env []string, idleT
 		pidPath:     pidPath,
 		transport:   transport,
 		listener:    listener,
+		initResult:  initResult,
 		idleTimeout: idleTimeout,
 		done:        make(chan struct{}),
 	}
@@ -177,12 +178,26 @@ func (d *Daemon) handleConn(conn net.Conn) {
 
 		// Handle notifications (no ID, no response expected).
 		if req.ID == nil {
+			// Swallow notifications/initialized — the daemon already sent it.
+			if req.Method == "notifications/initialized" {
+				continue
+			}
 			_ = d.transport.SendNotification(context.Background(), &req)
 			continue
 		}
 
 		// Save the client's original ID.
 		clientID := *req.ID
+
+		// Intercept "initialize" — return cached result instead of re-initializing.
+		if req.Method == "initialize" {
+			d.writeResponse(conn, &mcp.Response{
+				JSONRPC: "2.0",
+				ID:      &clientID,
+				Result:  d.initResult,
+			})
+			continue
+		}
 
 		// Forward to the real MCP server. StdioTransport.Send assigns its own ID.
 		resp, err := d.transport.Send(context.Background(), &req)
@@ -258,6 +273,45 @@ func (d *Daemon) shutdown() {
 	d.listener.Close()
 	os.Remove(d.socketPath)
 	os.Remove(d.pidPath)
+}
+
+// performHandshake sends the MCP initialize request and notifications/initialized,
+// returning the raw InitializeResult JSON for replay to future clients.
+func performHandshake(transport *mcp.StdioTransport) (json.RawMessage, error) {
+	params := map[string]any{
+		"protocolVersion": "2025-11-25",
+		"capabilities":    map[string]any{},
+		"clientInfo": map[string]any{
+			"name":    "mcpx",
+			"version": "1.3.0",
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	resp, err := transport.Send(ctx, &mcp.Request{
+		Method: "initialize",
+		Params: params,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", mcp.ErrInitFailed, err)
+	}
+	if resp.Error != nil {
+		return nil, fmt.Errorf("%w: %s", mcp.ErrInitFailed, resp.Error.Error())
+	}
+
+	// Cache the raw result.
+	initResult := resp.Result
+
+	// Send initialized notification.
+	if err := transport.SendNotification(ctx, &mcp.Request{
+		Method: "notifications/initialized",
+	}); err != nil {
+		return nil, fmt.Errorf("%w: %v", mcp.ErrInitFailed, err)
+	}
+
+	return initResult, nil
 }
 
 // SocketPath returns the unix socket path for a server's daemon.

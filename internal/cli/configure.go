@@ -107,6 +107,11 @@ func generateMCPXMD(cfg *config.Config) string {
 	b.WriteString("mcpx <server> <tool> --stdin      # Read args from stdin JSON\n")
 	b.WriteString("mcpx <server> <tool> --json       # Output raw JSON\n")
 	b.WriteString("mcpx daemon status               # Show running daemons\n")
+	b.WriteString("mcpx <server> info               # Show server capabilities\n")
+	b.WriteString("mcpx <server> prompt list         # List available prompts\n")
+	b.WriteString("mcpx <server> prompt <name> --args # Get a prompt\n")
+	b.WriteString("mcpx <server> resource list       # List available resources\n")
+	b.WriteString("mcpx <server> resource read <uri> # Read a resource\n")
 	b.WriteString("```\n\n")
 
 	b.WriteString("## Configured Servers\n\n")

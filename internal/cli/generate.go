@@ -12,8 +12,8 @@ import (
 	"github.com/codestz/mcpx/internal/mcp"
 )
 
-// runGenerate connects to a server, fetches tools, and generates a concise
-// Markdown reference file for Claude Code.
+// runGenerate connects to a server, fetches tools (and prompts/resources if supported),
+// and generates a concise Markdown reference file for Claude Code.
 func runGenerate(ctx context.Context, serverName string, sc *config.ServerConfig, global bool, format string) error {
 	client, cleanup, err := connectServer(ctx, serverName, sc)
 	if err != nil {
@@ -26,7 +26,19 @@ func runGenerate(ctx context.Context, serverName string, sc *config.ServerConfig
 		return fmt.Errorf("list tools: %w", err)
 	}
 
-	content := generateServerMDWithFormat(serverName, tools, format)
+	caps := client.ServerCapabilities()
+
+	var prompts []mcp.Prompt
+	if caps.Prompts != nil {
+		prompts, _ = client.ListPrompts(ctx)
+	}
+
+	var resources []mcp.Resource
+	if caps.Resources != nil {
+		resources, _ = client.ListResources(ctx)
+	}
+
+	content := generateServerMDWithFormat(serverName, tools, prompts, resources, format)
 
 	claudeDir, err := claudeDirectory(global)
 	if err != nil {
@@ -70,16 +82,16 @@ func runGenerate(ctx context.Context, serverName string, sc *config.ServerConfig
 }
 
 // generateServerMDWithFormat dispatches to the right format generator.
-func generateServerMDWithFormat(serverName string, tools []mcp.Tool, format string) string {
+func generateServerMDWithFormat(serverName string, tools []mcp.Tool, prompts []mcp.Prompt, resources []mcp.Resource, format string) string {
 	if format == "compact" {
-		return generateServerMDCompact(serverName, tools)
+		return generateServerMDCompact(serverName, tools, prompts, resources)
 	}
-	return generateServerMD(serverName, tools)
+	return generateServerMD(serverName, tools, prompts, resources)
 }
 
-// generateServerMD creates a concise reference for a server's tools.
+// generateServerMD creates a concise reference for a server's tools, prompts, and resources.
 // Optimized for AI consumption: compact, all flags visible, ~100 lines max.
-func generateServerMD(serverName string, tools []mcp.Tool) string {
+func generateServerMD(serverName string, tools []mcp.Tool, prompts []mcp.Prompt, resources []mcp.Resource) string {
 	var b strings.Builder
 
 	b.WriteString(fmt.Sprintf("# %s — mcpx tool reference\n\n", serverName))
@@ -135,6 +147,43 @@ func generateServerMD(serverName string, tools []mcp.Tool) string {
 		b.WriteString(fmt.Sprintf("```\n%s\n```\n\n", strings.Join(exampleParts, " ")))
 	}
 
+	if len(prompts) > 0 {
+		b.WriteString(fmt.Sprintf("## Prompts (%d)\n\n", len(prompts)))
+		b.WriteString(fmt.Sprintf("Usage: `mcpx %s prompt <name> [--arg value ...]`\n\n", serverName))
+		for _, p := range prompts {
+			b.WriteString(fmt.Sprintf("**%s**", p.Name))
+			if p.Description != "" {
+				b.WriteString(" — " + firstSentence(p.Description))
+			}
+			b.WriteString("\n")
+			if len(p.Arguments) > 0 {
+				var args []string
+				for _, a := range p.Arguments {
+					entry := fmt.Sprintf("--%s", a.Name)
+					if a.Required {
+						entry += " *"
+					}
+					args = append(args, entry)
+				}
+				b.WriteString("  " + strings.Join(args, ", ") + "\n")
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if len(resources) > 0 {
+		b.WriteString(fmt.Sprintf("## Resources (%d)\n\n", len(resources)))
+		b.WriteString(fmt.Sprintf("Usage: `mcpx %s resource read <uri>`\n\n", serverName))
+		for _, r := range resources {
+			b.WriteString(fmt.Sprintf("- `%s`", r.URI))
+			if r.Name != "" {
+				b.WriteString(fmt.Sprintf(" — %s", r.Name))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
+
 	return b.String()
 }
 
@@ -172,7 +221,7 @@ func compactDesc(s string) string {
 
 // generateServerMDCompact creates a minimal one-line-per-tool reference.
 // Optimized for maximum token efficiency: ~50% smaller than table format.
-func generateServerMDCompact(serverName string, tools []mcp.Tool) string {
+func generateServerMDCompact(serverName string, tools []mcp.Tool, prompts []mcp.Prompt, resources []mcp.Resource) string {
 	var b strings.Builder
 
 	b.WriteString(fmt.Sprintf("# %s (%d tools)\n\n", serverName, len(tools)))
@@ -213,5 +262,40 @@ func generateServerMDCompact(serverName string, tools []mcp.Tool) string {
 	}
 
 	b.WriteString("`*` = required\n")
+
+	if len(prompts) > 0 {
+		b.WriteString(fmt.Sprintf("\n## Prompts (%d)\n\n", len(prompts)))
+		for _, p := range prompts {
+			desc := ""
+			if p.Description != "" {
+				desc = " — " + firstSentence(p.Description)
+			}
+			b.WriteString(fmt.Sprintf("**%s**%s\n", p.Name, desc))
+			if len(p.Arguments) > 0 {
+				var args []string
+				for _, a := range p.Arguments {
+					entry := fmt.Sprintf("--%s", a.Name)
+					if a.Required {
+						entry += " *"
+					}
+					args = append(args, entry)
+				}
+				b.WriteString("  " + strings.Join(args, ", ") + "\n")
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if len(resources) > 0 {
+		b.WriteString(fmt.Sprintf("\n## Resources (%d)\n\n", len(resources)))
+		for _, r := range resources {
+			b.WriteString(fmt.Sprintf("- `%s`", r.URI))
+			if r.Name != "" {
+				b.WriteString(" — " + r.Name)
+			}
+			b.WriteString("\n")
+		}
+	}
+
 	return b.String()
 }

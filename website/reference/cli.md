@@ -62,10 +62,90 @@ mcpx serena search_for_pattern --substring_pattern "TODO" --timeout 60s
 
 ### `mcpx <server> --help`
 
-Show all tools available on a server.
+Show all tools available on a server. If the server supports prompts or resources, they are listed too.
 
 ```bash
 mcpx serena --help
+```
+
+---
+
+## Server Info
+
+### `mcpx <server> info`
+
+Show server metadata and capabilities: server name, version, protocol version, and a checklist of supported MCP primitives.
+
+```bash
+mcpx serena info
+# serena
+#
+# Server:   FastMCP 1.23.0
+# Protocol: 2025-06-18
+#
+# Capabilities:
+#   [x] Tools
+#   [x] Prompts
+#   [x] Resources
+#   [ ] Logging
+
+mcpx serena info --json
+```
+
+---
+
+## Prompts
+
+MCP servers can expose prompt templates that generate structured messages.
+
+### `mcpx <server> prompt list`
+
+List all available prompts.
+
+```bash
+mcpx everything prompt list
+```
+
+### `mcpx <server> prompt <name> --help`
+
+Show a prompt's arguments with required markers.
+
+```bash
+mcpx everything prompt args-prompt --help
+```
+
+### `mcpx <server> prompt <name> [--arg value ...]`
+
+Get a prompt with arguments. Required arguments are validated before the request is sent.
+
+```bash
+mcpx everything prompt simple-prompt
+# [user]: This is a simple prompt without arguments.
+
+mcpx everything prompt args-prompt --city "Tokyo"
+# [user]: What's weather in Tokyo?
+```
+
+---
+
+## Resources
+
+MCP servers can expose resources — static content or dynamic URI templates.
+
+### `mcpx <server> resource list`
+
+List all resources and resource templates.
+
+```bash
+mcpx everything resource list
+```
+
+### `mcpx <server> resource read <uri>`
+
+Read a resource by URI. Text resources are printed directly; binary resources show `[binary: mime, N bytes]`.
+
+```bash
+mcpx everything resource read "demo://resource/static/document/architecture.md"
 ```
 
 ---

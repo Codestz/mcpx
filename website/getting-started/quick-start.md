@@ -82,6 +82,24 @@ mcpx serena search_symbol --help
 
 Shows flag names, types, required markers, descriptions, and defaults — all auto-generated from the MCP schema.
 
+### Inspect server capabilities
+
+```bash
+mcpx serena info
+# Shows server name, version, protocol, and supported capabilities
+```
+
+### Explore prompts and resources
+
+If the server supports them:
+
+```bash
+mcpx <server> prompt list                       # list prompts
+mcpx <server> prompt <name> --arg value         # get a prompt
+mcpx <server> resource list                     # list resources
+mcpx <server> resource read <uri>               # read a resource
+```
+
 ### Health check
 
 ```bash

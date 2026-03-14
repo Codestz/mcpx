@@ -242,6 +242,12 @@ mcpx <server> <tool> --help      Show tool help with all flags
 mcpx <server> <tool> --stdin     Read arguments from stdin as JSON
 mcpx <server> --help             List all tools for a server
 
+mcpx <server> info               Show server capabilities
+mcpx <server> prompt list        List available prompts
+mcpx <server> prompt <name>      Get a prompt (with --arg value)
+mcpx <server> resource list      List resources and templates
+mcpx <server> resource read <uri> Read a resource
+
 mcpx list                        List configured servers
 mcpx list <server> -v            List tools with all flags
 mcpx ping <server>               Health check a server
@@ -259,6 +265,16 @@ mcpx daemon stop-all             Stop all daemons
 mcpx version                     Print version
 mcpx completion bash|zsh|fish    Generate shell completions
 ```
+
+### v1.3.0 — Full MCP Coverage
+
+| Command | Description |
+|---------|-------------|
+| `mcpx <server> info` | Server name, version, protocol, capability checklist |
+| `mcpx <server> prompt list` | List available prompts |
+| `mcpx <server> prompt <name> [--arg val]` | Get a prompt with arguments |
+| `mcpx <server> resource list` | List resources and URI templates |
+| `mcpx <server> resource read <uri>` | Read a resource by URI |
 
 ### v1.1.0 flags
 

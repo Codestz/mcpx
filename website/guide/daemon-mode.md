@@ -28,10 +28,12 @@ mcpx automatically starts the daemon on first use and connects via socket on sub
 ## How It Works
 
 1. First call to `mcpx serena <tool>`: spawns a detached daemon process
-2. Daemon starts the MCP server, performs the handshake, listens on a unix socket
-3. `mcpx` connects to the socket, sends the request, gets the response
+2. Daemon starts the MCP server, performs the handshake, caches the server's capabilities
+3. `mcpx` connects to the socket, replays the cached handshake, sends the request, gets the response
 4. CLI exits. Daemon stays alive.
 5. Next call: connects to existing socket — zero startup cost
+
+The daemon caches the `InitializeResult` from the MCP handshake and replays it to each connecting client. This means `mcpx <server> info`, `--help` (with prompts/resources), and all capability-based features work correctly in daemon mode.
 
 ```
 mcpx CLI ──► unix socket ──► daemon process ──► MCP server subprocess

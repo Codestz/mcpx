@@ -8,9 +8,10 @@ import (
 
 // Client is a high-level MCP protocol client.
 type Client struct {
-	transport  Transport
-	serverCaps ServerCapabilities
-	serverInfo ServerInfo
+	transport       Transport
+	serverCaps      ServerCapabilities
+	serverInfo      ServerInfo
+	protocolVersion string
 }
 
 // NewClient creates a new MCP client using the given transport.
@@ -26,7 +27,7 @@ func (c *Client) Initialize(ctx context.Context) error {
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
 			"name":    "mcpx",
-			"version": "1.1.0",
+			"version": "1.3.0",
 		},
 	}
 
@@ -48,6 +49,7 @@ func (c *Client) Initialize(ctx context.Context) error {
 		if err := json.Unmarshal(resp.Result, &result); err == nil {
 			c.serverCaps = result.Capabilities
 			c.serverInfo = result.ServerInfo
+			c.protocolVersion = result.ProtocolVersion
 		}
 	}
 
@@ -151,6 +153,216 @@ func (c *Client) CallTool(ctx context.Context, name string, args map[string]any)
 			Name:    name,
 			Message: msg,
 		}
+	}
+
+	return &result, nil
+}
+
+// ProtocolVersion returns the protocol version negotiated during initialization.
+func (c *Client) ProtocolVersion() string {
+	return c.protocolVersion
+}
+
+// listPromptsResult is used to unmarshal the prompts/list response.
+type listPromptsResult struct {
+	Prompts    []Prompt `json:"prompts"`
+	NextCursor *string  `json:"nextCursor,omitempty"`
+}
+
+// ListPrompts fetches the list of prompts from the MCP server, handling pagination.
+func (c *Client) ListPrompts(ctx context.Context) ([]Prompt, error) {
+	var all []Prompt
+	var cursor *string
+
+	for {
+		params := map[string]any{}
+		if cursor != nil {
+			params["cursor"] = *cursor
+		}
+
+		var reqParams any
+		if len(params) > 0 {
+			reqParams = params
+		}
+
+		resp, err := c.transport.Send(ctx, &Request{
+			Method: "prompts/list",
+			Params: reqParams,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("mcp: list prompts: %w", err)
+		}
+
+		if resp.Error != nil {
+			return nil, resp.Error
+		}
+
+		var result listPromptsResult
+		if err := json.Unmarshal(resp.Result, &result); err != nil {
+			return nil, fmt.Errorf("mcp: unmarshal prompts: %w", err)
+		}
+
+		all = append(all, result.Prompts...)
+
+		if result.NextCursor == nil || *result.NextCursor == "" {
+			break
+		}
+		cursor = result.NextCursor
+	}
+
+	return all, nil
+}
+
+// GetPrompt retrieves a prompt by name with the given arguments.
+func (c *Client) GetPrompt(ctx context.Context, name string, args map[string]string) (*PromptResult, error) {
+	params := map[string]any{
+		"name": name,
+	}
+	if len(args) > 0 {
+		params["arguments"] = args
+	}
+
+	resp, err := c.transport.Send(ctx, &Request{
+		Method: "prompts/get",
+		Params: params,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mcp: get prompt %q: %w", name, err)
+	}
+
+	if resp.Error != nil {
+		return nil, resp.Error
+	}
+
+	var result PromptResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return nil, fmt.Errorf("mcp: unmarshal prompt result: %w", err)
+	}
+
+	return &result, nil
+}
+
+// listResourcesResult is used to unmarshal the resources/list response.
+type listResourcesResult struct {
+	Resources  []Resource `json:"resources"`
+	NextCursor *string    `json:"nextCursor,omitempty"`
+}
+
+// ListResources fetches the list of resources from the MCP server, handling pagination.
+func (c *Client) ListResources(ctx context.Context) ([]Resource, error) {
+	var all []Resource
+	var cursor *string
+
+	for {
+		params := map[string]any{}
+		if cursor != nil {
+			params["cursor"] = *cursor
+		}
+
+		var reqParams any
+		if len(params) > 0 {
+			reqParams = params
+		}
+
+		resp, err := c.transport.Send(ctx, &Request{
+			Method: "resources/list",
+			Params: reqParams,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("mcp: list resources: %w", err)
+		}
+
+		if resp.Error != nil {
+			return nil, resp.Error
+		}
+
+		var result listResourcesResult
+		if err := json.Unmarshal(resp.Result, &result); err != nil {
+			return nil, fmt.Errorf("mcp: unmarshal resources: %w", err)
+		}
+
+		all = append(all, result.Resources...)
+
+		if result.NextCursor == nil || *result.NextCursor == "" {
+			break
+		}
+		cursor = result.NextCursor
+	}
+
+	return all, nil
+}
+
+// listResourceTemplatesResult is used to unmarshal the resources/templates/list response.
+type listResourceTemplatesResult struct {
+	ResourceTemplates []ResourceTemplate `json:"resourceTemplates"`
+	NextCursor        *string            `json:"nextCursor,omitempty"`
+}
+
+// ListResourceTemplates fetches the list of resource templates from the MCP server, handling pagination.
+func (c *Client) ListResourceTemplates(ctx context.Context) ([]ResourceTemplate, error) {
+	var all []ResourceTemplate
+	var cursor *string
+
+	for {
+		params := map[string]any{}
+		if cursor != nil {
+			params["cursor"] = *cursor
+		}
+
+		var reqParams any
+		if len(params) > 0 {
+			reqParams = params
+		}
+
+		resp, err := c.transport.Send(ctx, &Request{
+			Method: "resources/templates/list",
+			Params: reqParams,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("mcp: list resource templates: %w", err)
+		}
+
+		if resp.Error != nil {
+			return nil, resp.Error
+		}
+
+		var result listResourceTemplatesResult
+		if err := json.Unmarshal(resp.Result, &result); err != nil {
+			return nil, fmt.Errorf("mcp: unmarshal resource templates: %w", err)
+		}
+
+		all = append(all, result.ResourceTemplates...)
+
+		if result.NextCursor == nil || *result.NextCursor == "" {
+			break
+		}
+		cursor = result.NextCursor
+	}
+
+	return all, nil
+}
+
+// ReadResource reads a resource by URI.
+func (c *Client) ReadResource(ctx context.Context, uri string) (*ResourceResult, error) {
+	params := map[string]any{
+		"uri": uri,
+	}
+
+	resp, err := c.transport.Send(ctx, &Request{
+		Method: "resources/read",
+		Params: params,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mcp: read resource %q: %w", uri, err)
+	}
+
+	if resp.Error != nil {
+		return nil, resp.Error
+	}
+
+	var result ResourceResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return nil, fmt.Errorf("mcp: unmarshal resource result: %w", err)
 	}
 
 	return &result, nil

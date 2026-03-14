@@ -2,7 +2,7 @@
 
 > What's next for mcpx — focused on impact, not infrastructure.
 
-mcpx v1.1.0 added ergonomic enhancements (`@file`, `--pick`, `--timeout`, stdin merge, `configure`). Everything below builds on that foundation to make the tool sharper for the people already using it.
+mcpx v1.3.0 completes full MCP spec coverage (tools, prompts, resources) with daemon capability forwarding. Everything below builds on that foundation to make the tool sharper for the people already using it.
 
 ---
 
@@ -37,18 +37,28 @@ mcpx v1.1.0 added ergonomic enhancements (`@file`, `--pick`, `--timeout`, stdin 
 
 ---
 
-## v1.3 — Output Control
+## v1.3 — Full MCP Coverage ✅ (shipped 2026-03-14)
 
-**Theme:** Advanced output formatting.
+**Theme:** Complete MCP spec support — tools, prompts, and resources.
 
-- **`--template`** — Go template strings on output: `--template "{{len .results}} found"`.
-- **Structured exit codes** — distinct code for timeout (4), in addition to tool error (1), config error (2), connection error (3). Scripts need this to branch correctly.
+### Shipped
 
-> Note: Basic field extraction is covered by `--pick` (shipped in v1.1).
+- **Prompts** — `prompt list`, `prompt <name> --help`, `prompt <name> [--arg val ...]`. Full `prompts/list` and `prompts/get` with pagination.
+- **Resources** — `resource list`, `resource read <uri>`. Full `resources/list`, `resources/templates/list`, and `resources/read` with pagination.
+- **Server info** — `mcpx <server> info` shows server name, version, protocol version, and capability checklist.
+- **Daemon capability forwarding** — daemon caches `InitializeResult` and replays it to clients. All features now work in daemon mode.
+- **Prompt argument validation** — required arguments checked before RPC call.
+- **Enhanced server help** — `--help` shows prompts and resources alongside tools.
+- **Generate v2** — `configure` and `generate` include prompts/resources in generated docs.
+
+### Deferred to later
+
+- **`--template`** — Go template strings on output. Moved to v1.4.
+- **Structured exit codes** — distinct timeout code (4). Moved to v1.4.
 
 ---
 
-## v1.4 — Multi-Server Workflows
+## v1.4 — Output Control & Multi-Server Workflows
 
 **Theme:** Repeatable pipelines.
 

@@ -43,9 +43,11 @@ func completeToolNames(serverName string, sc *config.ServerConfig) func(*cobra.C
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
-		names := make([]string, len(tools))
-		for i, t := range tools {
-			names[i] = t.Name
+		// Add subcommands before tool names.
+		names := []string{"info", "prompt", "resource"}
+
+		for _, t := range tools {
+			names = append(names, t.Name)
 		}
 
 		return names, cobra.ShellCompDirectiveNoFileComp

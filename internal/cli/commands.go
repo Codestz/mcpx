@@ -86,6 +86,21 @@ func buildServerCommand(name string, sc *config.ServerConfig, opts *globalOpts) 
 				return out.printTools(name, tools)
 			}
 
+			// Handle "info" subcommand.
+			if args[0] == "info" {
+				return handleServerInfo(cmd.Context(), name, sc, opts)
+			}
+
+			// Handle "prompt" subcommand.
+			if args[0] == "prompt" {
+				return handlePrompt(cmd.Context(), name, sc, args[1:], opts)
+			}
+
+			// Handle "resource" subcommand.
+			if args[0] == "resource" {
+				return handleResource(cmd.Context(), name, sc, args[1:], opts)
+			}
+
 			// Handle "generate" subcommand.
 			if args[0] == "generate" {
 				global := false
@@ -121,7 +136,7 @@ func buildServerCommand(name string, sc *config.ServerConfig, opts *globalOpts) 
 }
 
 // showServerHelp connects to a server and displays a dynamic help page
-// listing all available tools with their flags.
+// listing all available tools, prompts, and resources.
 func showServerHelp(ctx context.Context, serverName string, sc *config.ServerConfig, opts *globalOpts) error {
 	out := newOutput(opts.outputMode())
 
@@ -136,7 +151,19 @@ func showServerHelp(ctx context.Context, serverName string, sc *config.ServerCon
 		return fmt.Errorf("list tools: %w", err)
 	}
 
-	return out.printServerHelp(serverName, sc, tools)
+	caps := client.ServerCapabilities()
+
+	var prompts []mcp.Prompt
+	if caps.Prompts != nil {
+		prompts, _ = client.ListPrompts(ctx)
+	}
+
+	var resources []mcp.Resource
+	if caps.Resources != nil {
+		resources, _ = client.ListResources(ctx)
+	}
+
+	return out.printServerHelpFull(serverName, sc, tools, prompts, resources)
 }
 
 // runTool connects to a server, finds the named tool, parses flags, and executes.
@@ -257,6 +284,167 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, to
 	}
 
 	return out.printResult(result)
+}
+
+// handleServerInfo connects to the server and displays its metadata and capabilities.
+func handleServerInfo(ctx context.Context, name string, sc *config.ServerConfig, opts *globalOpts) error {
+	out := newOutput(opts.outputMode())
+
+	client, cleanup, err := connectServer(ctx, name, sc)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	info := client.ServerInfo()
+	caps := client.ServerCapabilities()
+	version := client.ProtocolVersion()
+
+	return out.printServerInfo(name, info, caps, version)
+}
+
+// handlePrompt dispatches prompt subcommands: list, <name> --help, <name> --args.
+func handlePrompt(ctx context.Context, name string, sc *config.ServerConfig, args []string, opts *globalOpts) error {
+	out := newOutput(opts.outputMode())
+
+	if len(args) == 0 || args[0] == "list" {
+		client, cleanup, err := connectServer(ctx, name, sc)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+
+		prompts, err := client.ListPrompts(ctx)
+		if err != nil {
+			return fmt.Errorf("list prompts: %w", err)
+		}
+		return out.printPrompts(name, prompts)
+	}
+
+	promptName := args[0]
+	promptArgs := args[1:]
+
+	// Check for --help.
+	wantHelp := false
+	var filteredArgs []string
+	for _, a := range promptArgs {
+		if a == "--help" || a == "-h" {
+			wantHelp = true
+		} else {
+			filteredArgs = append(filteredArgs, a)
+		}
+	}
+
+	client, cleanup, err := connectServer(ctx, name, sc)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	if wantHelp {
+		prompts, err := client.ListPrompts(ctx)
+		if err != nil {
+			return fmt.Errorf("list prompts: %w", err)
+		}
+		for i := range prompts {
+			if prompts[i].Name == promptName {
+				out.printPromptHelp(name, &prompts[i])
+				return nil
+			}
+		}
+		return fmt.Errorf("prompt %q not found in server %q", promptName, name)
+	}
+
+	// Parse --key value pairs into map[string]string.
+	promptMap := make(map[string]string)
+	for i := 0; i < len(filteredArgs); i++ {
+		arg := filteredArgs[i]
+		if strings.HasPrefix(arg, "--") {
+			key := strings.TrimPrefix(arg, "--")
+			if i+1 < len(filteredArgs) {
+				i++
+				promptMap[key] = filteredArgs[i]
+			} else {
+				return fmt.Errorf("flag --%s requires a value", key)
+			}
+		}
+	}
+
+	// Validate required arguments.
+	prompts, err := client.ListPrompts(ctx)
+	if err != nil {
+		return fmt.Errorf("list prompts: %w", err)
+	}
+	for i := range prompts {
+		if prompts[i].Name == promptName {
+			for _, arg := range prompts[i].Arguments {
+				if arg.Required {
+					if _, ok := promptMap[arg.Name]; !ok {
+						return fmt.Errorf("required argument --%s not provided\nRun: mcpx %s prompt %s --help", arg.Name, name, promptName)
+					}
+				}
+			}
+			break
+		}
+	}
+
+	result, err := client.GetPrompt(ctx, promptName, promptMap)
+	if err != nil {
+		return err
+	}
+
+	return out.printPromptResult(result)
+}
+
+// handleResource dispatches resource subcommands: list, read <uri>.
+func handleResource(ctx context.Context, name string, sc *config.ServerConfig, args []string, opts *globalOpts) error {
+	out := newOutput(opts.outputMode())
+
+	if len(args) == 0 || args[0] == "list" {
+		client, cleanup, err := connectServer(ctx, name, sc)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+
+		resources, err := client.ListResources(ctx)
+		if err != nil {
+			return fmt.Errorf("list resources: %w", err)
+		}
+		if err := out.printResources(name, resources); err != nil {
+			return err
+		}
+
+		// Also list resource templates if available.
+		templates, _ := client.ListResourceTemplates(ctx)
+		if len(templates) > 0 {
+			fmt.Fprintln(out.stdout)
+			return out.printResourceTemplates(name, templates)
+		}
+		return nil
+	}
+
+	if args[0] == "read" {
+		if len(args) < 2 {
+			return fmt.Errorf("usage: mcpx %s resource read <uri>", name)
+		}
+		uri := args[1]
+
+		client, cleanup, err := connectServer(ctx, name, sc)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+
+		result, err := client.ReadResource(ctx, uri)
+		if err != nil {
+			return err
+		}
+
+		return out.printResourceResult(result)
+	}
+
+	return fmt.Errorf("unknown resource subcommand %q\nUsage: mcpx %s resource [list|read <uri>]", args[0], name)
 }
 
 // resolveStringValue resolves @file / @- / - syntax for flag values.
@@ -555,8 +743,18 @@ func connectStdio(ctx context.Context, name string, sc *config.ServerConfig, tim
 			return nil, nil, fmt.Errorf("server %q: connect daemon: %w", name, err)
 		}
 
-		// Daemon already did Initialize() — client just sends tool requests.
 		client := mcp.NewClient(transport)
+
+		// Initialize through the daemon — it returns its cached InitializeResult,
+		// so the client gets server info and capabilities.
+		initCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		if err := client.Initialize(initCtx); err != nil {
+			transport.Close()
+			return nil, nil, fmt.Errorf("server %q: daemon initialize: %w", name, err)
+		}
+
 		cleanup := func() { transport.Close() } // closes socket, daemon stays alive
 		return client, cleanup, nil
 	}
