@@ -179,10 +179,15 @@ type serverInfo struct {
 	Daemon    bool   `json:"daemon"`
 }
 
-// printServerHelp displays a dynamic help page for a server, showing all tools.
-func (o *output) printServerHelp(serverName string, sc *config.ServerConfig, tools []mcp.Tool) error {
+
+// printServerHelpFull displays a dynamic help page showing tools, prompts, and resources.
+func (o *output) printServerHelpFull(serverName string, sc *config.ServerConfig, tools []mcp.Tool, prompts []mcp.Prompt, resources []mcp.Resource) error {
 	if o.mode == outputJSON {
-		return o.printJSON(tools)
+		return o.printJSON(map[string]any{
+			"tools":     tools,
+			"prompts":   prompts,
+			"resources": resources,
+		})
 	}
 
 	bold := color.New(color.Bold)
@@ -200,16 +205,40 @@ func (o *output) printServerHelp(serverName string, sc *config.ServerConfig, too
 	fmt.Fprintf(o.stdout, "  mcpx %s <tool> [flags]\n", serverName)
 	fmt.Fprintf(o.stdout, "  mcpx %s <tool> --help       Show tool flags\n", serverName)
 	fmt.Fprintf(o.stdout, "  mcpx %s <tool> --stdin      Read args from stdin JSON\n", serverName)
+	fmt.Fprintf(o.stdout, "  mcpx %s info                Show server capabilities\n", serverName)
+	fmt.Fprintf(o.stdout, "  mcpx %s prompt list         List available prompts\n", serverName)
+	fmt.Fprintf(o.stdout, "  mcpx %s resource list       List available resources\n", serverName)
 	fmt.Fprintln(o.stdout)
 
 	fmt.Fprintf(o.stdout, "Available tools (%d):\n\n", len(tools))
-
 	for _, t := range tools {
 		bold.Fprintf(o.stdout, "  %s", t.Name)
 		if t.Description != "" {
 			dim.Fprintf(o.stdout, "  %s", truncate(t.Description, 60))
 		}
 		fmt.Fprintln(o.stdout)
+	}
+
+	if len(prompts) > 0 {
+		fmt.Fprintf(o.stdout, "\nAvailable prompts (%d):\n\n", len(prompts))
+		for _, p := range prompts {
+			bold.Fprintf(o.stdout, "  %s", p.Name)
+			if p.Description != "" {
+				dim.Fprintf(o.stdout, "  %s", truncate(p.Description, 60))
+			}
+			fmt.Fprintln(o.stdout)
+		}
+	}
+
+	if len(resources) > 0 {
+		fmt.Fprintf(o.stdout, "\nAvailable resources (%d):\n\n", len(resources))
+		for _, r := range resources {
+			bold.Fprintf(o.stdout, "  %s", r.URI)
+			if r.Name != "" {
+				dim.Fprintf(o.stdout, "  %s", r.Name)
+			}
+			fmt.Fprintln(o.stdout)
+		}
 	}
 
 	fmt.Fprintln(o.stdout)
@@ -395,6 +424,245 @@ func (o *output) printToolHelp(serverName string, tool *mcp.Tool) {
 
 		fmt.Fprintln(o.stdout)
 	}
+}
+
+// printPrompts displays a list of prompts.
+func (o *output) printPrompts(serverName string, prompts []mcp.Prompt) error {
+	if o.mode == outputJSON {
+		return o.printJSON(prompts)
+	}
+
+	bold := color.New(color.Bold)
+	dim := color.New(color.FgHiBlack)
+
+	if len(prompts) == 0 {
+		fmt.Fprintf(o.stdout, "No prompts found for server %q\n", serverName)
+		return nil
+	}
+
+	bold.Fprintf(o.stdout, "%s", serverName)
+	fmt.Fprintf(o.stdout, " (%d prompts)\n\n", len(prompts))
+
+	for _, p := range prompts {
+		bold.Fprintf(o.stdout, "  %s", p.Name)
+		if p.Description != "" {
+			dim.Fprintf(o.stdout, "  %s", truncate(p.Description, 72))
+		}
+		fmt.Fprintln(o.stdout)
+	}
+
+	return nil
+}
+
+// printPromptHelp displays detailed help for a single prompt.
+func (o *output) printPromptHelp(serverName string, prompt *mcp.Prompt) {
+	if o.mode == outputJSON {
+		o.printJSON(prompt)
+		return
+	}
+
+	bold := color.New(color.Bold)
+	dim := color.New(color.FgHiBlack)
+	yellow := color.New(color.FgYellow)
+
+	bold.Fprintf(o.stdout, "%s", prompt.Name)
+	dim.Fprintf(o.stdout, "  (%s)\n", serverName)
+
+	if prompt.Description != "" {
+		fmt.Fprintf(o.stdout, "\n%s\n", prompt.Description)
+	}
+
+	fmt.Fprintf(o.stdout, "\nUsage:\n")
+	fmt.Fprintf(o.stdout, "  mcpx %s prompt %s [--arg value ...]\n", serverName, prompt.Name)
+
+	if len(prompt.Arguments) == 0 {
+		fmt.Fprintf(o.stdout, "\nNo arguments.\n")
+		return
+	}
+
+	fmt.Fprintf(o.stdout, "\nArguments:\n")
+	for _, arg := range prompt.Arguments {
+		fmt.Fprintf(o.stdout, "  --%s", arg.Name)
+		if arg.Required {
+			yellow.Fprint(o.stdout, " (required)")
+		}
+		if arg.Description != "" {
+			fmt.Fprintf(o.stdout, "  %s", arg.Description)
+		}
+		fmt.Fprintln(o.stdout)
+	}
+}
+
+// printPromptResult displays the messages from a prompt result.
+func (o *output) printPromptResult(result *mcp.PromptResult) error {
+	if o.mode == outputQuiet {
+		return nil
+	}
+
+	if o.mode == outputJSON {
+		return o.printJSON(result)
+	}
+
+	bold := color.New(color.Bold)
+
+	if result.Description != "" {
+		fmt.Fprintln(o.stdout, result.Description)
+		fmt.Fprintln(o.stdout)
+	}
+
+	for _, msg := range result.Messages {
+		bold.Fprintf(o.stdout, "[%s]: ", msg.Role)
+		switch msg.Content.Type {
+		case "text", "":
+			fmt.Fprintln(o.stdout, msg.Content.Text)
+		case "image":
+			mime := msg.Content.MimeType
+			if mime == "" {
+				mime = "unknown"
+			}
+			fmt.Fprintf(o.stdout, "[image: %s, %d bytes base64]\n", mime, len(msg.Content.Data))
+		case "resource":
+			if msg.Content.Resource != nil {
+				if msg.Content.Resource.Text != "" {
+					fmt.Fprintf(o.stdout, "[resource: %s]\n%s\n", msg.Content.Resource.URI, msg.Content.Resource.Text)
+				} else {
+					fmt.Fprintf(o.stdout, "[resource: %s, %d bytes base64]\n", msg.Content.Resource.URI, len(msg.Content.Resource.Blob))
+				}
+			}
+		default:
+			fmt.Fprintf(o.stdout, "[%s content]\n", msg.Content.Type)
+		}
+	}
+
+	return nil
+}
+
+// printResources displays a list of resources.
+func (o *output) printResources(serverName string, resources []mcp.Resource) error {
+	if o.mode == outputJSON {
+		return o.printJSON(resources)
+	}
+
+	bold := color.New(color.Bold)
+	dim := color.New(color.FgHiBlack)
+
+	if len(resources) == 0 {
+		fmt.Fprintf(o.stdout, "No resources found for server %q\n", serverName)
+		return nil
+	}
+
+	bold.Fprintf(o.stdout, "%s", serverName)
+	fmt.Fprintf(o.stdout, " (%d resources)\n\n", len(resources))
+
+	for _, r := range resources {
+		bold.Fprintf(o.stdout, "  %s", r.URI)
+		if r.Name != "" {
+			dim.Fprintf(o.stdout, "  %s", r.Name)
+		}
+		if r.Description != "" {
+			dim.Fprintf(o.stdout, "  %s", truncate(r.Description, 60))
+		}
+		fmt.Fprintln(o.stdout)
+	}
+
+	return nil
+}
+
+// printResourceTemplates displays a list of resource templates.
+func (o *output) printResourceTemplates(serverName string, templates []mcp.ResourceTemplate) error {
+	if o.mode == outputJSON {
+		return o.printJSON(templates)
+	}
+
+	bold := color.New(color.Bold)
+	dim := color.New(color.FgHiBlack)
+
+	if len(templates) == 0 {
+		return nil
+	}
+
+	bold.Fprintf(o.stdout, "%s", serverName)
+	fmt.Fprintf(o.stdout, " (%d resource templates)\n\n", len(templates))
+
+	for _, t := range templates {
+		bold.Fprintf(o.stdout, "  %s", t.URITemplate)
+		if t.Name != "" {
+			dim.Fprintf(o.stdout, "  %s", t.Name)
+		}
+		if t.Description != "" {
+			dim.Fprintf(o.stdout, "  %s", truncate(t.Description, 50))
+		}
+		fmt.Fprintln(o.stdout)
+	}
+
+	return nil
+}
+
+// printResourceResult displays the contents of a resource read result.
+func (o *output) printResourceResult(result *mcp.ResourceResult) error {
+	if o.mode == outputQuiet {
+		return nil
+	}
+
+	if o.mode == outputJSON {
+		return o.printJSON(result)
+	}
+
+	for _, c := range result.Contents {
+		if c.Text != "" {
+			fmt.Fprintln(o.stdout, c.Text)
+		} else if c.Blob != "" {
+			mime := c.MimeType
+			if mime == "" {
+				mime = "unknown"
+			}
+			fmt.Fprintf(o.stdout, "[binary: %s, %d bytes]\n", mime, len(c.Blob))
+		}
+	}
+
+	return nil
+}
+
+// printServerInfo displays server metadata and capabilities.
+func (o *output) printServerInfo(serverName string, info mcp.ServerInfo, caps mcp.ServerCapabilities, protocolVersion string) error {
+	if o.mode == outputJSON {
+		return o.printJSON(map[string]any{
+			"server":          serverName,
+			"serverInfo":      info,
+			"capabilities":    caps,
+			"protocolVersion": protocolVersion,
+		})
+	}
+
+	bold := color.New(color.Bold)
+	dim := color.New(color.FgHiBlack)
+	green := color.New(color.FgGreen)
+
+	bold.Fprintf(o.stdout, "%s\n\n", serverName)
+
+	dim.Fprint(o.stdout, "Server:   ")
+	fmt.Fprintf(o.stdout, "%s %s\n", info.Name, info.Version)
+
+	dim.Fprint(o.stdout, "Protocol: ")
+	fmt.Fprintln(o.stdout, protocolVersion)
+
+	fmt.Fprintln(o.stdout)
+	bold.Fprintln(o.stdout, "Capabilities:")
+
+	check := func(name string, supported bool) {
+		if supported {
+			green.Fprintf(o.stdout, "  [x] %s\n", name)
+		} else {
+			dim.Fprintf(o.stdout, "  [ ] %s\n", name)
+		}
+	}
+
+	check("Tools", caps.Tools != nil)
+	check("Prompts", caps.Prompts != nil)
+	check("Resources", caps.Resources != nil)
+	check("Logging", caps.Logging != nil)
+
+	return nil
 }
 
 func flagTypeLabel(jsonType string) string {

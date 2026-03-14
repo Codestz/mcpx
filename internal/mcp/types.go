@@ -60,6 +60,53 @@ type PropertySchema struct {
 	Items       *PropertySchema `json:"items,omitempty"`
 }
 
+// Prompt describes an MCP prompt exposed by a server.
+type Prompt struct {
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Arguments   []PromptArgument `json:"arguments,omitempty"`
+}
+
+// PromptArgument describes a single argument for a prompt.
+type PromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+// PromptMessage represents a single message in a prompt result.
+type PromptMessage struct {
+	Role    string  `json:"role"`
+	Content Content `json:"content"`
+}
+
+// PromptResult is the result of a prompts/get request.
+type PromptResult struct {
+	Description string          `json:"description,omitempty"`
+	Messages    []PromptMessage `json:"messages"`
+}
+
+// Resource describes an MCP resource exposed by a server.
+type Resource struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+// ResourceTemplate describes a URI template for dynamic resources.
+type ResourceTemplate struct {
+	URITemplate string `json:"uriTemplate"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+// ResourceResult is the result of a resources/read request.
+type ResourceResult struct {
+	Contents []ResourceContent `json:"contents"`
+}
+
 // InitializeResult holds the server's response to an initialize request.
 type InitializeResult struct {
 	ProtocolVersion string             `json:"protocolVersion"`
@@ -69,12 +116,25 @@ type InitializeResult struct {
 
 // ServerCapabilities describes what the server supports.
 type ServerCapabilities struct {
-	Tools   *ToolsCapability `json:"tools,omitempty"`
-	Logging *struct{}        `json:"logging,omitempty"`
+	Tools     *ToolsCapability     `json:"tools,omitempty"`
+	Prompts   *PromptsCapability   `json:"prompts,omitempty"`
+	Resources *ResourcesCapability `json:"resources,omitempty"`
+	Logging   *struct{}            `json:"logging,omitempty"`
 }
 
 // ToolsCapability describes tool-related capabilities.
 type ToolsCapability struct {
+	ListChanged bool `json:"listChanged,omitempty"`
+}
+
+// PromptsCapability describes prompt-related capabilities.
+type PromptsCapability struct {
+	ListChanged bool `json:"listChanged,omitempty"`
+}
+
+// ResourcesCapability describes resource-related capabilities.
+type ResourcesCapability struct {
+	Subscribe   bool `json:"subscribe,omitempty"`
 	ListChanged bool `json:"listChanged,omitempty"`
 }
 
@@ -117,6 +177,7 @@ type Notification struct {
 // Sentinel errors.
 var (
 	ErrToolNotFound    = errors.New("mcp: tool not found")
+	ErrPromptNotFound  = errors.New("mcp: prompt not found")
 	ErrInitFailed      = errors.New("mcp: initialization failed")
 	ErrTransportClosed = errors.New("mcp: transport closed")
 )

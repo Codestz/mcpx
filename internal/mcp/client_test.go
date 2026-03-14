@@ -438,6 +438,346 @@ func TestListToolsPaginated(t *testing.T) {
 	}
 }
 
+func TestListPrompts(t *testing.T) {
+	mt := &mockTransport{
+		handler: func(req *Request) (*Response, error) {
+			return jsonResponse(reqID(req), listPromptsResult{
+				Prompts: []Prompt{
+					{Name: "code_review", Description: "Review code for issues"},
+					{Name: "summarize", Description: "Summarize text"},
+				},
+			}), nil
+		},
+	}
+
+	c := NewClient(mt)
+	prompts, err := c.ListPrompts(context.Background())
+	if err != nil {
+		t.Fatalf("ListPrompts() error = %v", err)
+	}
+	if len(prompts) != 2 {
+		t.Fatalf("ListPrompts() returned %d prompts, want 2", len(prompts))
+	}
+	if prompts[0].Name != "code_review" {
+		t.Errorf("prompts[0].Name = %q, want %q", prompts[0].Name, "code_review")
+	}
+	if prompts[1].Name != "summarize" {
+		t.Errorf("prompts[1].Name = %q, want %q", prompts[1].Name, "summarize")
+	}
+}
+
+func TestListPromptsPaginated(t *testing.T) {
+	callCount := 0
+	mt := &mockTransport{
+		handler: func(req *Request) (*Response, error) {
+			callCount++
+
+			var cursor string
+			if req.Params != nil {
+				if params, ok := req.Params.(map[string]any); ok {
+					if c, ok := params["cursor"].(string); ok {
+						cursor = c
+					}
+				}
+			}
+
+			switch cursor {
+			case "":
+				next := "page2"
+				return jsonResponse(reqID(req), listPromptsResult{
+					Prompts:    []Prompt{{Name: "prompt_a", Description: "A"}},
+					NextCursor: &next,
+				}), nil
+			case "page2":
+				next := "page3"
+				return jsonResponse(reqID(req), listPromptsResult{
+					Prompts:    []Prompt{{Name: "prompt_b", Description: "B"}},
+					NextCursor: &next,
+				}), nil
+			case "page3":
+				return jsonResponse(reqID(req), listPromptsResult{
+					Prompts: []Prompt{{Name: "prompt_c", Description: "C"}},
+				}), nil
+			default:
+				return nil, errors.New("unexpected cursor: " + cursor)
+			}
+		},
+	}
+
+	c := NewClient(mt)
+	prompts, err := c.ListPrompts(context.Background())
+	if err != nil {
+		t.Fatalf("ListPrompts() error = %v", err)
+	}
+	if len(prompts) != 3 {
+		t.Fatalf("ListPrompts() returned %d prompts, want 3", len(prompts))
+	}
+	if callCount != 3 {
+		t.Errorf("expected 3 requests (3 pages), got %d", callCount)
+	}
+}
+
+func TestGetPrompt(t *testing.T) {
+	tests := []struct {
+		name     string
+		handler  func(req *Request) (*Response, error)
+		wantMsgs int
+		wantErr  bool
+	}{
+		{
+			name: "successful get with args",
+			handler: func(req *Request) (*Response, error) {
+				return jsonResponse(reqID(req), PromptResult{
+					Messages: []PromptMessage{
+						{Role: "user", Content: Content{Type: "text", Text: "Review this code"}},
+						{Role: "assistant", Content: Content{Type: "text", Text: "LGTM"}},
+					},
+				}), nil
+			},
+			wantMsgs: 2,
+			wantErr:  false,
+		},
+		{
+			name: "rpc error",
+			handler: func(req *Request) (*Response, error) {
+				return errorResponse(reqID(req), -32601, "method not found"), nil
+			},
+			wantMsgs: 0,
+			wantErr:  true,
+		},
+		{
+			name: "transport error",
+			handler: func(req *Request) (*Response, error) {
+				return nil, errors.New("connection lost")
+			},
+			wantMsgs: 0,
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient(&mockTransport{handler: tt.handler})
+			result, err := c.GetPrompt(context.Background(), "test_prompt", map[string]string{"lang": "go"})
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetPrompt() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if result != nil && len(result.Messages) != tt.wantMsgs {
+				t.Errorf("GetPrompt() returned %d messages, want %d", len(result.Messages), tt.wantMsgs)
+			}
+		})
+	}
+}
+
+func TestListResources(t *testing.T) {
+	mt := &mockTransport{
+		handler: func(req *Request) (*Response, error) {
+			return jsonResponse(reqID(req), listResourcesResult{
+				Resources: []Resource{
+					{URI: "file:///src/main.go", Name: "main.go", Description: "Entry point"},
+					{URI: "file:///src/lib.go", Name: "lib.go"},
+				},
+			}), nil
+		},
+	}
+
+	c := NewClient(mt)
+	resources, err := c.ListResources(context.Background())
+	if err != nil {
+		t.Fatalf("ListResources() error = %v", err)
+	}
+	if len(resources) != 2 {
+		t.Fatalf("ListResources() returned %d resources, want 2", len(resources))
+	}
+	if resources[0].URI != "file:///src/main.go" {
+		t.Errorf("resources[0].URI = %q, want %q", resources[0].URI, "file:///src/main.go")
+	}
+}
+
+func TestListResourcesPaginated(t *testing.T) {
+	callCount := 0
+	mt := &mockTransport{
+		handler: func(req *Request) (*Response, error) {
+			callCount++
+
+			var cursor string
+			if req.Params != nil {
+				if params, ok := req.Params.(map[string]any); ok {
+					if c, ok := params["cursor"].(string); ok {
+						cursor = c
+					}
+				}
+			}
+
+			switch cursor {
+			case "":
+				next := "page2"
+				return jsonResponse(reqID(req), listResourcesResult{
+					Resources:  []Resource{{URI: "file:///a", Name: "a"}},
+					NextCursor: &next,
+				}), nil
+			case "page2":
+				next := "page3"
+				return jsonResponse(reqID(req), listResourcesResult{
+					Resources:  []Resource{{URI: "file:///b", Name: "b"}},
+					NextCursor: &next,
+				}), nil
+			case "page3":
+				return jsonResponse(reqID(req), listResourcesResult{
+					Resources: []Resource{{URI: "file:///c", Name: "c"}},
+				}), nil
+			default:
+				return nil, errors.New("unexpected cursor: " + cursor)
+			}
+		},
+	}
+
+	c := NewClient(mt)
+	resources, err := c.ListResources(context.Background())
+	if err != nil {
+		t.Fatalf("ListResources() error = %v", err)
+	}
+	if len(resources) != 3 {
+		t.Fatalf("ListResources() returned %d resources, want 3", len(resources))
+	}
+	if callCount != 3 {
+		t.Errorf("expected 3 requests (3 pages), got %d", callCount)
+	}
+}
+
+func TestReadResource(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler func(req *Request) (*Response, error)
+		wantErr bool
+	}{
+		{
+			name: "successful read with text",
+			handler: func(req *Request) (*Response, error) {
+				return jsonResponse(reqID(req), ResourceResult{
+					Contents: []ResourceContent{
+						{URI: "file:///test.txt", Text: "hello world", MimeType: "text/plain"},
+					},
+				}), nil
+			},
+			wantErr: false,
+		},
+		{
+			name: "successful read with blob",
+			handler: func(req *Request) (*Response, error) {
+				return jsonResponse(reqID(req), ResourceResult{
+					Contents: []ResourceContent{
+						{URI: "file:///img.png", Blob: "aGVsbG8=", MimeType: "image/png"},
+					},
+				}), nil
+			},
+			wantErr: false,
+		},
+		{
+			name: "rpc error",
+			handler: func(req *Request) (*Response, error) {
+				return errorResponse(reqID(req), -32601, "method not found"), nil
+			},
+			wantErr: true,
+		},
+		{
+			name: "transport error",
+			handler: func(req *Request) (*Response, error) {
+				return nil, errors.New("broken pipe")
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient(&mockTransport{handler: tt.handler})
+			result, err := c.ReadResource(context.Background(), "file:///test.txt")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ReadResource() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && result != nil && len(result.Contents) == 0 {
+				t.Error("ReadResource() returned empty contents")
+			}
+		})
+	}
+}
+
+func TestListResourceTemplates(t *testing.T) {
+	mt := &mockTransport{
+		handler: func(req *Request) (*Response, error) {
+			return jsonResponse(reqID(req), listResourceTemplatesResult{
+				ResourceTemplates: []ResourceTemplate{
+					{URITemplate: "file:///{path}", Name: "files", Description: "Project files"},
+					{URITemplate: "db:///{table}/{id}", Name: "records", Description: "Database records"},
+				},
+			}), nil
+		},
+	}
+
+	c := NewClient(mt)
+	templates, err := c.ListResourceTemplates(context.Background())
+	if err != nil {
+		t.Fatalf("ListResourceTemplates() error = %v", err)
+	}
+	if len(templates) != 2 {
+		t.Fatalf("ListResourceTemplates() returned %d templates, want 2", len(templates))
+	}
+	if templates[0].URITemplate != "file:///{path}" {
+		t.Errorf("templates[0].URITemplate = %q, want %q", templates[0].URITemplate, "file:///{path}")
+	}
+}
+
+func TestInitializeParsesPromptAndResourceCaps(t *testing.T) {
+	mt := &mockTransport{
+		handler: func(req *Request) (*Response, error) {
+			switch req.Method {
+			case "initialize":
+				return jsonResponse(reqID(req), map[string]any{
+					"protocolVersion": "2025-11-25",
+					"serverInfo":      map[string]any{"name": "full-server", "version": "3.0"},
+					"capabilities": map[string]any{
+						"tools":     map[string]any{"listChanged": true},
+						"prompts":   map[string]any{"listChanged": true},
+						"resources": map[string]any{"subscribe": true, "listChanged": true},
+					},
+				}), nil
+			case "notifications/initialized":
+				return &Response{JSONRPC: "2.0"}, nil
+			default:
+				return nil, errors.New("unexpected method")
+			}
+		},
+	}
+
+	c := NewClient(mt)
+	if err := c.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	caps := c.ServerCapabilities()
+	if caps.Prompts == nil {
+		t.Fatal("ServerCapabilities.Prompts is nil, want non-nil")
+	}
+	if !caps.Prompts.ListChanged {
+		t.Error("Prompts.ListChanged = false, want true")
+	}
+
+	if caps.Resources == nil {
+		t.Fatal("ServerCapabilities.Resources is nil, want non-nil")
+	}
+	if !caps.Resources.Subscribe {
+		t.Error("Resources.Subscribe = false, want true")
+	}
+	if !caps.Resources.ListChanged {
+		t.Error("Resources.ListChanged = false, want true")
+	}
+
+	if c.ProtocolVersion() != "2025-11-25" {
+		t.Errorf("ProtocolVersion() = %q, want %q", c.ProtocolVersion(), "2025-11-25")
+	}
+}
+
 func TestPing(t *testing.T) {
 	tests := []struct {
 		name    string
