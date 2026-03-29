@@ -197,7 +197,7 @@ func addServerCommands(root *cobra.Command, opts *globalOpts) error {
 	sort.Strings(names)
 
 	for _, name := range names {
-		root.AddCommand(buildServerCommand(name, cfg.Servers[name], opts))
+		root.AddCommand(buildServerCommand(name, cfg.Servers[name], cfg.Security, opts))
 	}
 
 	// Daemon management commands.

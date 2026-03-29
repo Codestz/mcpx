@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Terminal window frame -->
+  <rect x="4" y="8" width="56" height="44" rx="6" stroke="currentColor" stroke-width="2.5"/>
+  <!-- Title bar -->
+  <line x1="4" y1="18" x2="60" y2="18" stroke="currentColor" stroke-width="2"/>
+  <!-- Window dots -->
+  <circle cx="12" cy="13" r="2" fill="currentColor" opacity="0.4"/>
+  <circle cx="19" cy="13" r="2" fill="currentColor" opacity="0.4"/>
+  <circle cx="26" cy="13" r="2" fill="currentColor" opacity="0.4"/>
+  <!-- Prompt arrow (chevron) -->
+  <polyline points="14,30 22,36 14,42" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Cursor line -->
+  <line x1="27" y1="36" x2="48" y2="36" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Shield overlay (security) -->
+  <path d="M44 48 L44 56 Q44 60 48 62 Q52 60 52 56 L52 48 Z" stroke="currentColor" stroke-width="2" fill="currentColor" opacity="0.15"/>
+  <polyline points="46,54 48,56.5 52,52" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

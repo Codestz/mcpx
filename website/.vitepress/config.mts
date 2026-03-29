@@ -2,25 +2,25 @@ import { defineConfig } from 'vitepress'
 
 export default defineConfig({
   title: 'MCPX',
-  description: 'MCP servers as CLI tools — built for AI agents',
+  description: 'Secure gateway for MCP servers — from CLI to production',
   base: '/mcpx/',
   head: [
     ['meta', { name: 'theme-color', content: '#000000' }],
-    ['meta', { property: 'og:title', content: 'MCPX' }],
-    ['meta', { property: 'og:description', content: 'MCP servers as CLI tools — built for AI agents' }],
+    ['meta', { property: 'og:title', content: 'MCPX — Secure MCP Gateway' }],
+    ['meta', { property: 'og:description', content: 'Secure gateway for MCP servers — from CLI to production. Security policies, audit logging, lifecycle hooks, and monorepo workspaces.' }],
   ],
 
   themeConfig: {
-    logo: false,
+    logo: '/logo.svg',
     siteTitle: 'MCPX',
 
     nav: [
       { text: 'Guide', link: '/getting-started/installation' },
+      { text: 'Security', link: '/security/overview' },
       { text: 'Reference', link: '/reference/cli' },
-      { text: 'Troubleshooting', link: '/troubleshooting/' },
-      { text: 'Examples', link: '/examples/serena' },
+      { text: 'Integrations', link: '/integrations/serena' },
       {
-        text: 'v1.3.0',
+        text: 'v2.0.0',
         items: [
           { text: 'Changelog', link: '/about/changelog' },
           { text: 'GitHub', link: 'https://github.com/codestz/mcpx' },
@@ -41,7 +41,7 @@ export default defineConfig({
       ],
       '/guide/': [
         {
-          text: 'Guide',
+          text: 'Core Concepts',
           items: [
             { text: 'Configuration', link: '/guide/configuration' },
             { text: 'Dynamic Variables', link: '/guide/variables' },
@@ -49,6 +49,40 @@ export default defineConfig({
             { text: 'Daemon Mode', link: '/guide/daemon-mode' },
             { text: 'Output Modes', link: '/guide/output-modes' },
             { text: 'Shell Completion', link: '/guide/shell-completion' },
+          ],
+        },
+      ],
+      '/security/': [
+        {
+          text: 'Security',
+          items: [
+            { text: 'Overview', link: '/security/overview' },
+            { text: 'Policies', link: '/security/policies' },
+            { text: 'Modes', link: '/security/modes' },
+            { text: 'Audit Logging', link: '/security/audit-logging' },
+            { text: 'Examples', link: '/security/examples' },
+          ],
+        },
+      ],
+      '/workspaces/': [
+        {
+          text: 'Workspaces',
+          items: [
+            { text: 'Overview', link: '/workspaces/overview' },
+            { text: 'Configuration', link: '/workspaces/configuration' },
+            { text: 'Serena Monorepo', link: '/workspaces/serena-monorepo' },
+          ],
+        },
+      ],
+      '/integrations/': [
+        {
+          text: 'Integrations',
+          items: [
+            { text: 'Serena', link: '/integrations/serena' },
+            { text: 'Databases', link: '/integrations/databases' },
+            { text: 'Project Management', link: '/integrations/project-management' },
+            { text: 'Communication', link: '/integrations/communication' },
+            { text: 'CI/CD Pipelines', link: '/integrations/ci-cd' },
           ],
         },
       ],
@@ -78,7 +112,7 @@ export default defineConfig({
       ],
       '/examples/': [
         {
-          text: 'Examples',
+          text: 'Examples (Legacy)',
           items: [
             { text: 'Serena', link: '/examples/serena' },
             { text: 'Multi-Server Project', link: '/examples/multi-server' },

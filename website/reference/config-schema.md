@@ -5,124 +5,288 @@ Complete YAML schema reference for `.mcpx/config.yml`.
 ## Full Schema
 
 ```yaml
+# Top-level security (applies to all servers)
+security:
+  enabled: bool
+  global:
+    audit:
+      enabled: bool
+      log: string                # path, supports $(variables)
+      redact: [string]
+    rate_limit:
+      max_calls_per_minute: int
+      max_calls_per_tool: int
+    policies:
+      - name: string
+        match:
+          tools: [string]        # glob patterns
+          args:
+            <name-pattern>:
+              deny_pattern: regex
+              allow_prefix: [string]
+              deny_prefix: [string]
+          content:
+            target: string       # e.g. "args.sql"
+            deny_pattern: regex
+            require_pattern: regex
+            when: regex
+        action: string           # allow, deny, warn
+        message: string
+
+# Server definitions
 servers:
   <server-name>:
-    # Required
-    command: string
-
-    # Optional
+    # Connection
+    command: string              # required for stdio
     args: [string]
-    transport: "stdio"         # default: "stdio"
-    daemon: bool               # default: false
-    startup_timeout: string    # default: "30s"
-    env:
-      <KEY>: <value>
+    transport: string            # stdio (default), http, sse
+    url: string                  # required for http/sse
+    headers: { key: value }
+    auth:
+      type: string               # e.g. "bearer"
+      token: string
+    daemon: bool                 # default: false
+    startup_timeout: string      # default: "30s"
+    env: { KEY: value }
+
+    # Security (per-server)
+    security:
+      mode: string               # read-only, editing, custom
+      allowed_tools: [string]
+      blocked_tools: [string]
+      policies: [...]            # same as global policies
+
+    # Lifecycle
+    lifecycle:
+      on_connect:
+        - tool: string
+          args: { key: value }
+
+    # Workspaces (monorepo)
+    workspaces:
+      - name: string
+        path: string             # relative to project root
+        lifecycle: { ... }       # overrides server lifecycle
+        security: { ... }        # overrides server security
 ```
 
 ## Field Reference
 
-### `servers`
+### Top-Level
 
-Top-level map of server names to their configurations. Server names become CLI subcommands.
+#### `security`
 
-**Naming rules:**
-- Use lowercase letters, digits, and hyphens
-- Avoid names that conflict with built-in commands (`list`, `ping`, `daemon`, `secret`, `init`, `version`, `completion`, `configure`)
+Global security configuration. See [Security Overview](/security/overview).
 
-### `command` (required)
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable security policy evaluation |
+| `global.audit.enabled` | bool | `false` | Enable audit logging |
+| `global.audit.log` | string | — | Path to JSONL log file |
+| `global.audit.redact` | [string] | `[]` | Patterns for value redaction |
+| `global.rate_limit.max_calls_per_minute` | int | — | Rate limit across all tools |
+| `global.policies` | [Policy] | `[]` | Global security policies |
+
+### Server Fields
+
+#### `command` (required for stdio)
 
 The executable to spawn. Must be in `$PATH` or an absolute path.
 
 ```yaml
-command: uvx
+command: serena
 command: npx
 command: /usr/local/bin/my-server
 ```
 
-### `args`
+#### `args`
 
 List of arguments passed to the command. Supports [dynamic variables](/guide/variables).
 
 ```yaml
 args:
-  - --from
-  - git+https://github.com/oraios/serena
-  - serena
   - start-mcp-server
+  - --context=claude-code
   - --project
   - "$(mcpx.project_root)"
 ```
 
-### `transport`
+#### `transport`
 
-Communication protocol. Currently only `stdio` is supported.
+Communication protocol.
+
+| Value | Description |
+|-------|-------------|
+| `stdio` | Subprocess stdin/stdout (default) |
+| `http` | Streamable HTTP (MCP 2025-11-25 spec) |
+| `sse` | Server-Sent Events |
+
+#### `url` (required for http/sse)
+
+Server URL for remote transports.
 
 ```yaml
-transport: stdio    # default
+url: "http://localhost:8080/mcp"
+url: "$(secret.mcp_url)"
 ```
 
-### `daemon`
+#### `headers`
 
-When `true`, the server is spawned once as a background process and kept alive between calls. Connections are made via unix socket.
+HTTP headers for remote transports. Supports [dynamic variables](/guide/variables).
 
 ```yaml
-daemon: true
+headers:
+  X-Api-Key: "$(secret.api_key)"
 ```
 
-See [Daemon Mode](/guide/daemon-mode).
+#### `auth`
 
-### `startup_timeout`
+Authentication configuration for remote transports.
+
+```yaml
+auth:
+  type: bearer
+  token: "$(secret.auth_token)"
+```
+
+#### `daemon`
+
+When `true`, the server is spawned once and kept alive between calls via unix socket. See [Daemon Mode](/guide/daemon-mode).
+
+#### `startup_timeout`
 
 Maximum time to wait for the server to become responsive. Accepts Go duration strings.
 
 ```yaml
-startup_timeout: "60s"     # 60 seconds
-startup_timeout: "2m"      # 2 minutes
-startup_timeout: "30s"     # default
+startup_timeout: "60s"
+startup_timeout: "2m"
 ```
 
-### `env`
+#### `env`
 
-Extra environment variables injected into the server process. Supports [dynamic variables](/guide/variables).
+Extra environment variables injected into the server process.
 
 ```yaml
 env:
   GITHUB_TOKEN: "$(secret.github_token)"
   NODE_ENV: production
-  DEBUG: "true"
 ```
 
-These are appended to the current environment — they don't replace it.
+#### `security`
+
+Per-server security configuration. See [Security Policies](/security/policies) and [Modes](/security/modes).
+
+```yaml
+security:
+  mode: read-only
+  allowed_tools: [find_*, search_*, list_*]
+  blocked_tools: [delete_*]
+  policies:
+    - name: restrict-paths
+      match:
+        args:
+          relative_path: { allow_prefix: ["src/"] }
+      action: deny
+      message: "Restricted to src/"
+```
+
+#### `lifecycle`
+
+Hooks that run after connecting to the server. See [Lifecycle Hooks](#lifecycle-hooks).
+
+```yaml
+lifecycle:
+  on_connect:
+    - tool: activate_project
+      args: { project: "$(mcpx.project_root)" }
+```
+
+#### `workspaces`
+
+Monorepo workspace definitions. See [Workspaces](/workspaces/overview).
+
+```yaml
+workspaces:
+  - name: frontend
+    path: packages/web
+    lifecycle: { ... }
+    security: { ... }
+```
+
+## Lifecycle Hooks
+
+Hooks run automatically after the MCP handshake completes. They execute sequentially — if any hook fails, remaining hooks are skipped and an error is returned.
+
+```yaml
+lifecycle:
+  on_connect:
+    - tool: activate_project
+      args:
+        project: "$(mcpx.project_root)"
+```
+
+Hook arguments support [dynamic variables](/guide/variables). The `tool` field is the MCP tool name to call on the server.
+
+**Important:** Hooks should be lightweight and idempotent. Heavy operations like onboarding should be run manually.
 
 ## Example: Complete Config
 
 ```yaml
+security:
+  enabled: true
+  global:
+    audit:
+      enabled: true
+      log: "$(mcpx.project_root)/.mcpx/audit.jsonl"
+      redact: ["$(secret.*)"]
+    policies:
+      - name: no-path-traversal
+        match:
+          args:
+            "*path*":
+              deny_pattern: "\\.\\.\\/|\\.\\.\\\\\\/"
+        action: deny
+        message: "Path traversal blocked"
+
 servers:
   serena:
-    command: uvx
-    args:
-      - --from
-      - git+https://github.com/oraios/serena
-      - serena
-      - start-mcp-server
-      - --project
-      - "$(mcpx.project_root)"
-    transport: stdio
+    command: serena
+    args: [start-mcp-server, --context=claude-code]
     daemon: true
-    startup_timeout: "60s"
+    startup_timeout: 30s
+    lifecycle:
+      on_connect:
+        - tool: activate_project
+          args: { project: "$(mcpx.project_root)" }
+    security:
+      mode: editing
+    workspaces:
+      - name: api
+        path: services/api
+        lifecycle:
+          on_connect:
+            - tool: activate_project
+              args: { project: "$(mcpx.project_root)/services/api" }
+        security:
+          mode: editing
 
-  sequential-thinking:
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-sequential-thinking"]
-
-  filesystem:
-    command: npx
-    args:
-      - -y
-      - "@modelcontextprotocol/server-filesystem"
-      - "$(env.HOME)/projects"
+  postgres:
+    command: postgres-mcp
     env:
-      NODE_ENV: production
+      DATABASE_URL: "$(secret.pg_url)"
+    security:
+      mode: read-only
+
+  jira:
+    command: jira-mcp
+    transport: http
+    url: "$(secret.jira_url)"
+    auth:
+      type: bearer
+      token: "$(secret.jira_token)"
+    security:
+      mode: read-only
+      allowed_tools: [search_issues, get_issue, list_projects]
 ```
 
 ## Config Location Search

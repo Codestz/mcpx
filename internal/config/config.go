@@ -4,13 +4,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 // Config holds the full mcpx configuration.
 type Config struct {
-	Servers map[string]*ServerConfig `yaml:"servers"`
+	Servers  map[string]*ServerConfig `yaml:"servers"`
+	Security *SecurityConfig          `yaml:"security"`
 }
 
 // ServerConfig describes a single MCP server.
@@ -24,12 +26,99 @@ type ServerConfig struct {
 	URL            string            `yaml:"url"`
 	Headers        map[string]string `yaml:"headers"`
 	Auth           *AuthConfig       `yaml:"auth"`
+	Security       *ServerSecurity    `yaml:"security"`
+	Lifecycle      *LifecycleConfig   `yaml:"lifecycle"`
+	Workspaces     []WorkspaceConfig  `yaml:"workspaces"`
+}
+
+// WorkspaceConfig defines a workspace within a monorepo.
+// Each workspace maps to a subdirectory with its own lifecycle hooks and security.
+type WorkspaceConfig struct {
+	Name      string          `yaml:"name"`
+	Path      string          `yaml:"path"`       // relative to project root
+	Lifecycle *LifecycleConfig `yaml:"lifecycle"`
+	Security  *ServerSecurity  `yaml:"security"`
 }
 
 // AuthConfig holds authentication settings for remote transports.
 type AuthConfig struct {
 	Type  string `yaml:"type"`
 	Token string `yaml:"token"`
+}
+
+// SecurityConfig holds the top-level security configuration.
+type SecurityConfig struct {
+	Enabled bool           `yaml:"enabled"`
+	Global  GlobalSecurity `yaml:"global"`
+}
+
+// GlobalSecurity holds security settings that apply to all servers.
+type GlobalSecurity struct {
+	Audit     *AuditConfig     `yaml:"audit"`
+	RateLimit *RateLimitConfig `yaml:"rate_limit"`
+	Policies  []Policy         `yaml:"policies"`
+}
+
+// AuditConfig controls audit logging.
+type AuditConfig struct {
+	Enabled bool     `yaml:"enabled"`
+	Log     string   `yaml:"log"`
+	Redact  []string `yaml:"redact"`
+}
+
+// RateLimitConfig controls per-server rate limiting.
+type RateLimitConfig struct {
+	MaxCallsPerMinute int `yaml:"max_calls_per_minute"`
+	MaxCallsPerTool   int `yaml:"max_calls_per_tool"`
+}
+
+// Policy defines a security rule evaluated before tool calls.
+type Policy struct {
+	Name    string      `yaml:"name"`
+	Match   PolicyMatch `yaml:"match"`
+	Action  string      `yaml:"action"`  // "allow", "deny", "warn"
+	Message string      `yaml:"message"`
+}
+
+// PolicyMatch defines what a policy matches against.
+type PolicyMatch struct {
+	Tools   []string            `yaml:"tools"`
+	Args    map[string]ArgRule  `yaml:"args"`
+	Content *ContentMatch       `yaml:"content"`
+}
+
+// ArgRule defines rules for matching argument values.
+type ArgRule struct {
+	DenyPattern string   `yaml:"deny_pattern"`
+	AllowPrefix []string `yaml:"allow_prefix"`
+	DenyPrefix  []string `yaml:"deny_prefix"`
+}
+
+// ContentMatch inspects the body/value of a specific argument.
+type ContentMatch struct {
+	Target         string `yaml:"target"`          // dot-path to arg, e.g. "args.sql"
+	DenyPattern    string `yaml:"deny_pattern"`
+	RequirePattern string `yaml:"require_pattern"`
+	When           string `yaml:"when"`            // only apply require_pattern when this matches
+}
+
+// ServerSecurity holds per-server security overrides.
+type ServerSecurity struct {
+	Mode         string   `yaml:"mode"`          // "read-only", "editing", "custom"
+	AllowedTools []string `yaml:"allowed_tools"`
+	BlockedTools []string `yaml:"blocked_tools"`
+	Policies     []Policy `yaml:"policies"`
+}
+
+// LifecycleConfig holds server lifecycle hooks.
+type LifecycleConfig struct {
+	OnConnect []LifecycleHook `yaml:"on_connect"`
+}
+
+// LifecycleHook defines a tool call executed during a lifecycle event.
+type LifecycleHook struct {
+	Tool string         `yaml:"tool"`
+	Args map[string]any `yaml:"args"`
 }
 
 // Load reads the global (~/.mcpx/config.yml) and project (.mcpx/config.yml)
@@ -116,7 +205,7 @@ func parse(path string) (*Config, error) {
 }
 
 // Merge combines global and project configs. Project servers replace global
-// servers entirely on a per-server-name basis.
+// servers entirely on a per-server-name basis. Project security overrides global.
 func Merge(global, project *Config) *Config {
 	merged := &Config{
 		Servers: make(map[string]*ServerConfig),
@@ -127,6 +216,12 @@ func Merge(global, project *Config) *Config {
 	}
 	for name, sc := range project.Servers {
 		merged.Servers[name] = sc
+	}
+
+	// Security: project wins if present, otherwise global.
+	merged.Security = global.Security
+	if project.Security != nil {
+		merged.Security = project.Security
 	}
 
 	return merged
@@ -152,8 +247,116 @@ func Validate(cfg *Config) error {
 		default:
 			return fmt.Errorf("config: server %q: unknown transport %q", name, sc.Transport)
 		}
+
+		// Validate security mode.
+		if sc.Security != nil && sc.Security.Mode != "" {
+			switch sc.Security.Mode {
+			case "read-only", "editing", "custom":
+			default:
+				return fmt.Errorf("config: server %q: unknown security mode %q (must be read-only, editing, or custom)", name, sc.Security.Mode)
+			}
+		}
+
+		// Validate policy actions.
+		if sc.Security != nil {
+			for _, p := range sc.Security.Policies {
+				if err := validatePolicyAction(name, p); err != nil {
+					return err
+				}
+			}
+		}
+
+		// Validate lifecycle hooks.
+		if sc.Lifecycle != nil {
+			for _, h := range sc.Lifecycle.OnConnect {
+				if h.Tool == "" {
+					return fmt.Errorf("config: server %q: lifecycle hook missing tool name", name)
+				}
+			}
+		}
+
+		// Validate workspaces.
+		for _, ws := range sc.Workspaces {
+			if ws.Name == "" {
+				return fmt.Errorf("config: server %q: workspace missing name", name)
+			}
+			if ws.Path == "" {
+				return fmt.Errorf("config: server %q: workspace %q missing path", name, ws.Name)
+			}
+			if ws.Lifecycle != nil {
+				for _, h := range ws.Lifecycle.OnConnect {
+					if h.Tool == "" {
+						return fmt.Errorf("config: server %q: workspace %q: lifecycle hook missing tool name", name, ws.Name)
+					}
+				}
+			}
+		}
 	}
+
+	// Validate global policies.
+	if cfg.Security != nil {
+		for _, p := range cfg.Security.Global.Policies {
+			if err := validatePolicyAction("(global)", p); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
+}
+
+func validatePolicyAction(serverName string, p Policy) error {
+	switch p.Action {
+	case "allow", "deny", "warn":
+		return nil
+	case "":
+		return fmt.Errorf("config: server %q: policy %q missing action", serverName, p.Name)
+	default:
+		return fmt.Errorf("config: server %q: policy %q has unknown action %q (must be allow, deny, or warn)", serverName, p.Name, p.Action)
+	}
+}
+
+// ResolveWorkspace returns the workspace matching the current working directory,
+// or nil if cwd is not inside any workspace. projectRoot is the directory
+// containing .mcpx/config.yml.
+func ResolveWorkspace(sc *ServerConfig, projectRoot string) *WorkspaceConfig {
+	if len(sc.Workspaces) == 0 {
+		return nil
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+
+	// Resolve symlinks for reliable comparison (e.g. macOS /tmp → /private/tmp).
+	cwdReal, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		cwdReal = cwd
+	}
+
+	// Try each workspace — longest path match wins (most specific).
+	var best *WorkspaceConfig
+	bestLen := 0
+
+	for i := range sc.Workspaces {
+		ws := &sc.Workspaces[i]
+		wsAbs := filepath.Join(projectRoot, ws.Path)
+		wsReal, err := filepath.EvalSymlinks(wsAbs)
+		if err != nil {
+			wsReal = wsAbs
+		}
+
+		// cwd must be inside the workspace directory.
+		if cwdReal == wsReal || strings.HasPrefix(cwdReal, wsReal+string(filepath.Separator)) {
+			if len(wsReal) > bestLen {
+				best = ws
+				bestLen = len(wsReal)
+			}
+		}
+	}
+
+	return best
 }
 
 // findProjectConfig walks up from the current working directory looking for

@@ -12,16 +12,18 @@ import (
 
 	"github.com/codestz/mcpx/internal/config"
 	"github.com/codestz/mcpx/internal/daemon"
+	"github.com/codestz/mcpx/internal/lifecycle"
 	"github.com/codestz/mcpx/internal/mcp"
 	"github.com/codestz/mcpx/internal/resolver"
 	"github.com/codestz/mcpx/internal/secret"
+	"github.com/codestz/mcpx/internal/security"
 	"github.com/spf13/cobra"
 )
 
 // buildServerCommand creates a Cobra command for a configured MCP server.
 // It uses DisableFlagParsing so that tool flags (--file_mask, etc.) pass through
 // to the dynamic tool parser instead of being rejected by Cobra.
-func buildServerCommand(name string, sc *config.ServerConfig, opts *globalOpts) *cobra.Command {
+func buildServerCommand(name string, sc *config.ServerConfig, globalSec *config.SecurityConfig, opts *globalOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                name,
 		Short:              fmt.Sprintf("MCP server: %s", name),
@@ -128,7 +130,7 @@ func buildServerCommand(name string, sc *config.ServerConfig, opts *globalOpts) 
 			// Dynamic tool dispatch: mcpx <server> <tool> --flags
 			toolName := args[0]
 			toolArgs := args[1:]
-			return runTool(cmd.Context(), name, sc, toolName, toolArgs, opts)
+			return runTool(cmd.Context(), name, sc, globalSec, toolName, toolArgs, opts)
 		},
 	}
 
@@ -167,7 +169,7 @@ func showServerHelp(ctx context.Context, serverName string, sc *config.ServerCon
 }
 
 // runTool connects to a server, finds the named tool, parses flags, and executes.
-func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, toolName string, rawArgs []string, opts *globalOpts) error {
+func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, globalSec *config.SecurityConfig, toolName string, rawArgs []string, opts *globalOpts) error {
 	out := newOutput(opts.outputMode())
 
 	// Check for help or stdin mode.
@@ -266,6 +268,35 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, to
 		var cancel context.CancelFunc
 		callCtx, cancel = context.WithTimeout(ctx, d)
 		defer cancel()
+	}
+
+	// Evaluate security policies before calling the tool.
+	// Use workspace security if cwd is inside a workspace.
+	if globalSec != nil && globalSec.Enabled || sc.Security != nil {
+		serverSec := sc.Security
+		projectRoot, _ := findProjectRoot()
+		if ws := config.ResolveWorkspace(sc, projectRoot); ws != nil && ws.Security != nil {
+			serverSec = ws.Security
+		}
+		eval := security.NewEvaluator(serverName, globalSec, serverSec)
+		secResult := eval.Evaluate(toolName, toolArgs)
+
+		switch secResult.Action {
+		case security.ActionDeny:
+			// Log denial to audit if configured.
+			logAudit(globalSec, serverName, toolName, toolArgs, secResult)
+			msg := fmt.Sprintf("server %q: policy %q denied tool %q\n  Reason: %s",
+				serverName, secResult.PolicyName, toolName, secResult.Message)
+			if secResult.Details != "" {
+				msg += fmt.Sprintf("\n  %s", secResult.Details)
+			}
+			return fmt.Errorf("%s", msg)
+		case security.ActionWarn:
+			fmt.Fprintf(os.Stderr, "mcpx: warning: %s\n", secResult.Message)
+			logAudit(globalSec, serverName, toolName, toolArgs, secResult)
+		default:
+			logAudit(globalSec, serverName, toolName, toolArgs, secResult)
+		}
 	}
 
 	result, err := client.CallTool(callCtx, toolName, toolArgs)
@@ -639,7 +670,7 @@ func parseToolFlagsInternal(tool *mcp.Tool, rawArgs []string, skipRequired bool)
 	return result, nil
 }
 
-// connectServer resolves variables and connects to the MCP server.
+// connectServer resolves variables, connects to the MCP server, and runs lifecycle hooks.
 // Routes to the appropriate transport based on config: http, sse, daemon, or stdio.
 func connectServer(ctx context.Context, name string, sc *config.ServerConfig) (*mcp.Client, func(), error) {
 	timeout := 30 * time.Second
@@ -649,14 +680,29 @@ func connectServer(ctx context.Context, name string, sc *config.ServerConfig) (*
 		}
 	}
 
+	var client *mcp.Client
+	var cleanup func()
+	var err error
+
 	switch sc.Transport {
 	case "http":
-		return connectHTTP(ctx, name, sc, timeout)
+		client, cleanup, err = connectHTTP(ctx, name, sc, timeout)
 	case "sse":
-		return connectSSE(ctx, name, sc, timeout)
+		client, cleanup, err = connectSSE(ctx, name, sc, timeout)
 	default:
-		return connectStdio(ctx, name, sc, timeout)
+		client, cleanup, err = connectStdio(ctx, name, sc, timeout)
 	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Run lifecycle hooks (e.g. activate_project for Serena).
+	if err := runLifecycleHooks(ctx, client, name, sc); err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+
+	return client, cleanup, nil
 }
 
 // connectHTTP connects via the Streamable HTTP transport.
@@ -777,6 +823,88 @@ func connectStdio(ctx context.Context, name string, sc *config.ServerConfig, tim
 
 	cleanup := func() { client.Close() }
 	return client, cleanup, nil
+}
+
+// logAudit writes an audit log entry if audit logging is configured.
+func logAudit(globalSec *config.SecurityConfig, serverName, toolName string, args map[string]any, result security.Result) {
+	if globalSec == nil || globalSec.Global.Audit == nil || !globalSec.Global.Audit.Enabled {
+		return
+	}
+
+	audit := globalSec.Global.Audit
+
+	// Resolve variables in log path.
+	logPath := audit.Log
+	projectRoot, _ := findProjectRoot()
+	secrets := secret.NewKeyringStore()
+	res := resolver.New(projectRoot, secrets)
+	if resolved, err := res.Resolve(logPath); err == nil {
+		logPath = resolved
+	}
+
+	logger := security.NewAuditLogger(logPath, audit.Redact)
+	_ = logger.Log(security.AuditEntry{
+		Server:     serverName,
+		Tool:       toolName,
+		Args:       args,
+		Action:     security.ActionString(result.Action),
+		PolicyName: result.PolicyName,
+		Message:    result.Message,
+	})
+}
+
+// runLifecycleHooks executes on_connect hooks for a server if configured.
+// If workspaces are defined and cwd is inside one, workspace hooks are used instead.
+func runLifecycleHooks(ctx context.Context, client *mcp.Client, serverName string, sc *config.ServerConfig) error {
+	projectRoot, _ := findProjectRoot()
+
+	// Determine which hooks to run: workspace-specific or server-level.
+	hooks := getActiveHooks(sc, projectRoot)
+	if len(hooks) == 0 {
+		return nil
+	}
+
+	// Resolve $(var) patterns in hook args.
+	secrets := secret.NewKeyringStore()
+	res := resolver.New(projectRoot, secrets)
+
+	resolvedHooks := make([]config.LifecycleHook, len(hooks))
+	for i, hook := range hooks {
+		resolvedHooks[i] = config.LifecycleHook{
+			Tool: hook.Tool,
+			Args: make(map[string]any, len(hook.Args)),
+		}
+		for k, v := range hook.Args {
+			if strVal, ok := v.(string); ok {
+				resolved, err := res.Resolve(strVal)
+				if err != nil {
+					return fmt.Errorf("server %q: lifecycle hook %q: resolve arg %q: %w", serverName, hook.Tool, k, err)
+				}
+				resolvedHooks[i].Args[k] = resolved
+			} else {
+				resolvedHooks[i].Args[k] = v
+			}
+		}
+	}
+
+	return lifecycle.RunOnConnect(ctx, client, serverName, resolvedHooks)
+}
+
+// getActiveHooks returns the lifecycle hooks to execute based on cwd.
+// If cwd is inside a workspace, workspace hooks are used. Otherwise, server-level hooks.
+func getActiveHooks(sc *config.ServerConfig, projectRoot string) []config.LifecycleHook {
+	// Check for workspace match.
+	ws := config.ResolveWorkspace(sc, projectRoot)
+	if ws != nil && ws.Lifecycle != nil && len(ws.Lifecycle.OnConnect) > 0 {
+		return ws.Lifecycle.OnConnect
+	}
+
+	// Fall back to server-level hooks.
+	if sc.Lifecycle != nil {
+		return sc.Lifecycle.OnConnect
+	}
+
+	return nil
 }
 
 // resolveHeaders builds the HTTP headers map from config, including auth.
