@@ -15,7 +15,7 @@
 [![Go Downloads](https://pkg.go.dev/badge/github.com/codestz/mcpx.svg)](https://pkg.go.dev/github.com/codestz/mcpx)
 [![Homebrew](https://img.shields.io/badge/Homebrew-available-FBB040?logo=homebrew&logoColor=white)](https://github.com/codestz/homebrew-tap)
 
-**[Documentation](https://codestz.github.io/mcpx)** | **[Installation](https://codestz.github.io/mcpx/getting-started/installation)** | **[GitHub](https://github.com/codestz/mcpx)**
+**[Documentation](https://codestz.github.io/mcpx)** | **[Examples](https://github.com/codestz/mcpx-examples)** | **[Installation](https://codestz.github.io/mcpx/getting-started/installation)** | **[GitHub](https://github.com/codestz/mcpx)**
 
 ---
 
