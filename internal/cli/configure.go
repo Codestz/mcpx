@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/codestz/mcpx/internal/config"
+	"github.com/codestz/mcpx/v2/internal/config"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )

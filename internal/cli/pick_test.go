@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/codestz/mcpx/internal/mcp"
+	"github.com/codestz/mcpx/v2/internal/mcp"
 )
 
 func TestPickField(t *testing.T) {

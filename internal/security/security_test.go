@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/codestz/mcpx/internal/config"
+	"github.com/codestz/mcpx/v2/internal/config"
 )
 
 func TestEvaluate_NoSecurity(t *testing.T) {

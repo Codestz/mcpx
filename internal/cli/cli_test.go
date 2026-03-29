@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/codestz/mcpx/internal/mcp"
+	"github.com/codestz/mcpx/v2/internal/mcp"
 )
 
 func TestParseToolFlags(t *testing.T) {

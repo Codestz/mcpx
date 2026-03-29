@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/codestz/mcpx/internal/mcp"
+	"github.com/codestz/mcpx/v2/internal/mcp"
 )
 
 // Daemon holds a single MCP server alive and accepts client connections

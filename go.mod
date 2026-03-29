@@ -1,4 +1,4 @@
-module github.com/codestz/mcpx
+module github.com/codestz/mcpx/v2
 
 go 1.26.1
 

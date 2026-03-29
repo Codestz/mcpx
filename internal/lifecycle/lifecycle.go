@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/codestz/mcpx/internal/config"
-	"github.com/codestz/mcpx/internal/mcp"
+	"github.com/codestz/mcpx/v2/internal/config"
+	"github.com/codestz/mcpx/v2/internal/mcp"
 )
 
 // RunOnConnect executes lifecycle hooks after a successful MCP connection.

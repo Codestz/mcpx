@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/codestz/mcpx/internal/config"
-	"github.com/codestz/mcpx/internal/mcp"
+	"github.com/codestz/mcpx/v2/internal/config"
+	"github.com/codestz/mcpx/v2/internal/mcp"
 )
 
 // mockTransport implements mcp.Transport for testing.
