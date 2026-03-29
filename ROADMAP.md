@@ -2,11 +2,11 @@
 
 > What's next for mcpx — focused on impact, not infrastructure.
 
-mcpx v2.0.0 transforms mcpx from a CLI proxy into a secure gateway for MCP servers. Security policies, audit logging, lifecycle hooks, and monorepo workspace routing make mcpx ready for production teams.
+mcpx v1.4.0 transforms mcpx from a CLI proxy into a secure gateway for MCP servers. Security policies, audit logging, lifecycle hooks, and monorepo workspace routing make mcpx ready for production teams.
 
 ---
 
-## v2.0 — Secure Gateway ✅ (shipped 2026-03-28)
+## v1.4 — Secure Gateway ✅ (shipped 2026-03-28)
 
 **Theme:** The missing control plane between AI agents and MCP servers.
 
@@ -104,7 +104,7 @@ The stats collection from `mcpx gain` (v1.1) already captures the data. This rel
 
 ---
 
-## Future — Ecosystem (v3.0+)
+## Future — Ecosystem (v2.0+)
 
 Not committed to a timeline. Exploring:
 

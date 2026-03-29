@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/codestz/mcpx/v2/internal/config"
+	"github.com/codestz/mcpx/internal/config"
 )
 
 // Action represents the result of a policy evaluation.

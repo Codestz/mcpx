@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/codestz/mcpx/v2/internal/mcp"
+	"github.com/codestz/mcpx/internal/mcp"
 )
 
 // SocketTransport implements mcp.Transport over a unix socket connection

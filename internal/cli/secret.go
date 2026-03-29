@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/codestz/mcpx/v2/internal/secret"
+	"github.com/codestz/mcpx/internal/secret"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )

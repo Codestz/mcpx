@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/codestz/mcpx/v2/internal/secret"
+	"github.com/codestz/mcpx/internal/secret"
 )
 
 // varPattern matches $(namespace.key) with strict validation.

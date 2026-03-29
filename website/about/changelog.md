@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2026-03-28
+## [1.4.0] - 2026-03-28
 
 ### Added
 
@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Website redesigned** — new landing page with full-width layout, security showcase, animated terminal demos, 4-column feature grid. New sections: Security (5 pages), Workspaces (3 pages), Integrations (5 pages).
 - **Config schema expanded** — `security` (top-level and per-server), `lifecycle`, `workspaces` fields added to `ServerConfig`.
 - **README rewritten** — three-pillar structure (context cost, security, multi-server management) with YAML examples and live denial output.
-- Client version bumped to `2.0.0` in MCP handshake.
+- Client version bumped to `1.4.0` in MCP handshake.
 
 ### New packages
 

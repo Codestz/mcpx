@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/codestz/mcpx/v2/internal/mcp"
+	"github.com/codestz/mcpx/internal/mcp"
 )
 
 // pickField extracts a dot-separated field path from a CallResult's text content.

@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codestz/mcpx/v2/internal/config"
-	"github.com/codestz/mcpx/v2/internal/daemon"
-	"github.com/codestz/mcpx/v2/internal/lifecycle"
-	"github.com/codestz/mcpx/v2/internal/mcp"
-	"github.com/codestz/mcpx/v2/internal/resolver"
-	"github.com/codestz/mcpx/v2/internal/secret"
-	"github.com/codestz/mcpx/v2/internal/security"
+	"github.com/codestz/mcpx/internal/config"
+	"github.com/codestz/mcpx/internal/daemon"
+	"github.com/codestz/mcpx/internal/lifecycle"
+	"github.com/codestz/mcpx/internal/mcp"
+	"github.com/codestz/mcpx/internal/resolver"
+	"github.com/codestz/mcpx/internal/secret"
+	"github.com/codestz/mcpx/internal/security"
 	"github.com/spf13/cobra"
 )
 

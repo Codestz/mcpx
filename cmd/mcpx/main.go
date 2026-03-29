@@ -1,6 +1,6 @@
 package main
 
-import "github.com/codestz/mcpx/v2/internal/cli"
+import "github.com/codestz/mcpx/internal/cli"
 
 func main() {
 	cli.Execute()

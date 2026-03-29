@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/codestz/mcpx/v2/internal/config"
-	"github.com/codestz/mcpx/v2/internal/mcp"
+	"github.com/codestz/mcpx/internal/config"
+	"github.com/codestz/mcpx/internal/mcp"
 )
 
 // runGenerate connects to a server, fetches tools (and prompts/resources if supported),

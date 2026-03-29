@@ -5,8 +5,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/codestz/mcpx/v2/internal/config"
-	"github.com/codestz/mcpx/v2/internal/daemon"
+	"github.com/codestz/mcpx/internal/config"
+	"github.com/codestz/mcpx/internal/daemon"
 	"github.com/spf13/cobra"
 )
 
