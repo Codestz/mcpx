@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 	"sort"
 
 	"github.com/codestz/mcpx/internal/config"
@@ -11,7 +12,13 @@ import (
 )
 
 // Version is set at build time via ldflags.
-var Version = "dev"
+// Falls back to Go module version from build info (works with go install).
+var Version = func() string {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "dev"
+}()
 
 // globalOpts holds flags shared across all commands.
 type globalOpts struct {
