@@ -39,9 +39,9 @@ type Daemon struct {
 // Start launches the daemon: starts the MCP server, performs the MCP handshake,
 // listens on a unix socket, and serves client requests until shutdown.
 // This function blocks until the daemon exits.
-func Start(serverName string, command string, args []string, env []string, idleTimeout time.Duration) error {
-	socketPath := SocketPath(serverName)
-	pidPath := PIDPath(serverName)
+func Start(serverName string, scope string, command string, args []string, env []string, idleTimeout time.Duration) error {
+	socketPath := SocketPath(serverName, scope)
+	pidPath := PIDPath(serverName, scope)
 
 	// Clean up stale socket.
 	os.Remove(socketPath)
@@ -315,16 +315,26 @@ func performHandshake(transport *mcp.StdioTransport) (json.RawMessage, error) {
 }
 
 // SocketPath returns the unix socket path for a server's daemon.
-func SocketPath(serverName string) string {
+// Scope isolates daemons per project/workspace (e.g. hash of project root).
+func SocketPath(serverName, scope string) string {
+	if scope != "" {
+		return fmt.Sprintf("/tmp/mcpx-%s-%s-%d.sock", serverName, scope, os.Getuid())
+	}
 	return fmt.Sprintf("/tmp/mcpx-%s-%d.sock", serverName, os.Getuid())
 }
 
 // PIDPath returns the PID file path for a server's daemon.
-func PIDPath(serverName string) string {
+func PIDPath(serverName, scope string) string {
+	if scope != "" {
+		return fmt.Sprintf("/tmp/mcpx-%s-%s-%d.pid", serverName, scope, os.Getuid())
+	}
 	return fmt.Sprintf("/tmp/mcpx-%s-%d.pid", serverName, os.Getuid())
 }
 
 // LogPath returns the log file path for a server's daemon.
-func LogPath(serverName string) string {
+func LogPath(serverName, scope string) string {
+	if scope != "" {
+		return fmt.Sprintf("/tmp/mcpx-%s-%s-%d.log", serverName, scope, os.Getuid())
+	}
 	return fmt.Sprintf("/tmp/mcpx-%s-%d.log", serverName, os.Getuid())
 }

@@ -10,11 +10,11 @@ import (
 	"time"
 )
 
-// IsRunning checks if a daemon is alive for the given server.
+// IsRunning checks if a daemon is alive for the given server and scope.
 // It verifies both the PID file and socket connectivity.
-func IsRunning(serverName string) bool {
-	pidPath := PIDPath(serverName)
-	socketPath := SocketPath(serverName)
+func IsRunning(serverName, scope string) bool {
+	pidPath := PIDPath(serverName, scope)
+	socketPath := SocketPath(serverName, scope)
 
 	// Check PID file.
 	data, err := os.ReadFile(pidPath)
@@ -51,11 +51,12 @@ func IsRunning(serverName string) bool {
 
 // EnsureRunning makes sure a daemon is running for the server.
 // If not already running, it spawns one as a detached process.
+// Scope isolates daemons per project/workspace.
 // Returns the socket path to connect to.
-func EnsureRunning(ctx context.Context, serverName string, command string, args []string, env []string, startupTimeout time.Duration) (string, error) {
-	socketPath := SocketPath(serverName)
+func EnsureRunning(ctx context.Context, serverName, scope string, command string, args []string, env []string, startupTimeout time.Duration) (string, error) {
+	socketPath := SocketPath(serverName, scope)
 
-	if IsRunning(serverName) {
+	if IsRunning(serverName, scope) {
 		return socketPath, nil
 	}
 
@@ -67,6 +68,9 @@ func EnsureRunning(ctx context.Context, serverName string, command string, args 
 
 	// Build daemon command args using base64-encoded JSON for safe transport.
 	daemonArgs := []string{"__daemon", serverName, "--command", command}
+	if scope != "" {
+		daemonArgs = append(daemonArgs, "--scope", scope)
+	}
 	if len(args) > 0 {
 		daemonArgs = append(daemonArgs, "--args", EncodeStringSlice(args))
 	}
@@ -74,7 +78,7 @@ func EnsureRunning(ctx context.Context, serverName string, command string, args 
 		daemonArgs = append(daemonArgs, "--env", EncodeStringSlice(env))
 	}
 
-	logPath := LogPath(serverName)
+	logPath := LogPath(serverName, scope)
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return "", fmt.Errorf("daemon: open log %s: %w", logPath, err)
@@ -126,8 +130,8 @@ func EnsureRunning(ctx context.Context, serverName string, command string, args 
 }
 
 // Stop sends SIGTERM to a running daemon.
-func Stop(serverName string) error {
-	pidPath := PIDPath(serverName)
+func Stop(serverName, scope string) error {
+	pidPath := PIDPath(serverName, scope)
 
 	data, err := os.ReadFile(pidPath)
 	if err != nil {
@@ -149,7 +153,7 @@ func Stop(serverName string) error {
 	if err := signalTerminate(proc); err != nil {
 		// Process already dead — clean up.
 		os.Remove(pidPath)
-		os.Remove(SocketPath(serverName))
+		os.Remove(SocketPath(serverName, scope))
 		return nil
 	}
 
@@ -164,7 +168,7 @@ func Stop(serverName string) error {
 			// Force kill.
 			proc.Kill()
 			os.Remove(pidPath)
-			os.Remove(SocketPath(serverName))
+			os.Remove(SocketPath(serverName, scope))
 			return nil
 		case <-ticker.C:
 			if !isProcessAlive(proc) {

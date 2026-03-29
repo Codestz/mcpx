@@ -118,7 +118,19 @@ servers:
         # ...
 ```
 
+## Daemon Isolation
+
+Each workspace gets its own daemon process. Two Claude sessions working in different workspaces (or different projects) will never share a daemon — preventing race conditions on `activate_project`.
+
+```bash
+mcpx daemon status
+#   serena (a1b2c3d4)  running  /tmp/mcpx-serena-a1b2c3d4-501.sock  ← project A
+#   serena (e5f6g7h8)  running  /tmp/mcpx-serena-e5f6g7h8-501.sock  ← project B
+```
+
+See [Daemon Mode](/guide/daemon-mode) for details.
+
 ## Next Steps
 
 - [Workspace Configuration](/workspaces/configuration) — full YAML reference
-- [Serena Monorepo](/workspaces/serena-monorepo) — complete walkthrough with 5 workspaces
+- [Patterns & Examples](/workspaces/serena-monorepo) — monorepo, multi-project, nested layouts

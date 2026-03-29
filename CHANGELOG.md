@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-03-29
+
+### Added
+
+- **Scoped daemons** — each project/workspace gets its own daemon process, preventing cross-session races. Two Claude sessions on different projects no longer share a Serena daemon. Scope is a hash of the project root path + workspace name, embedded in socket/PID/log filenames.
+- **Daemon discovery** — `daemon status` now discovers all running scoped daemons via PID file globbing. `daemon stop` and `daemon stop-all` handle scoped daemons correctly.
+- **Workspaces in top nav** — Workspaces section now accessible directly from the website navigation bar.
+
+### Changed
+
+- `SocketPath`, `PIDPath`, `LogPath` accept a `scope` parameter. Socket paths become `/tmp/mcpx-<server>-<scope>-<uid>.sock`.
+- `EnsureRunning`, `IsRunning`, `Stop`, `Start` accept scope for daemon isolation.
+- `daemon status` shows scope identifiers next to running daemons.
+- Client version bumped to `1.5.0` in MCP handshake.
+
 ## [1.4.0] - 2026-03-28
 
 ### Added

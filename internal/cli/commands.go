@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -779,7 +780,8 @@ func connectStdio(ctx context.Context, name string, sc *config.ServerConfig, tim
 
 	// Daemon mode: connect via unix socket to a long-running process.
 	if sc.Daemon {
-		socketPath, err := daemon.EnsureRunning(ctx, name, sc.Command, resolvedArgs, envSlice, timeout)
+		scope := daemonScope(sc)
+		socketPath, err := daemon.EnsureRunning(ctx, name, scope, sc.Command, resolvedArgs, envSlice, timeout)
 		if err != nil {
 			return nil, nil, fmt.Errorf("server %q: daemon: %w", name, err)
 		}
@@ -823,6 +825,23 @@ func connectStdio(ctx context.Context, name string, sc *config.ServerConfig, tim
 
 	cleanup := func() { client.Close() }
 	return client, cleanup, nil
+}
+
+// daemonScope computes a scope string for daemon isolation.
+// Each unique project root + workspace combination gets its own daemon.
+func daemonScope(sc *config.ServerConfig) string {
+	projectRoot, _ := findProjectRoot()
+	if projectRoot == "" {
+		return ""
+	}
+
+	key := projectRoot
+	if ws := config.ResolveWorkspace(sc, projectRoot); ws != nil {
+		key += "/" + ws.Name
+	}
+
+	h := sha256.Sum256([]byte(key))
+	return fmt.Sprintf("%x", h[:4]) // 8 hex chars
 }
 
 // logAudit writes an audit log entry if audit logging is configured.

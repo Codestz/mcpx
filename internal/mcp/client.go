@@ -27,7 +27,7 @@ func (c *Client) Initialize(ctx context.Context) error {
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
 			"name":    "mcpx",
-			"version": "1.4.0",
+			"version": "1.5.0",
 		},
 	}
 

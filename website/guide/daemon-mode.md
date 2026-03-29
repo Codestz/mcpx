@@ -42,10 +42,26 @@ mcpx CLI ──► unix socket ──► daemon process ──► MCP server sub
 
 ### Socket Location
 
+Daemons are scoped by project and workspace to prevent cross-session conflicts:
+
 ```
-/tmp/mcpx-<server>-<uid>.sock    # unix socket (mode 0600)
-/tmp/mcpx-<server>-<uid>.pid     # PID file
-/tmp/mcpx-<server>-<uid>.log     # daemon log
+/tmp/mcpx-<server>-<scope>-<uid>.sock    # unix socket (mode 0600)
+/tmp/mcpx-<server>-<scope>-<uid>.pid     # PID file
+/tmp/mcpx-<server>-<scope>-<uid>.log     # daemon log
+```
+
+The `<scope>` is a short hash (8 hex chars) of the project root path + workspace name. This means:
+
+- **Two different projects** → two separate daemons (different scope hashes)
+- **Two workspaces in the same monorepo** → two separate daemons
+- **Same project, same workspace** → shared daemon (correct)
+
+This prevents a common problem: two Claude Code sessions working on different projects would share one Serena daemon, racing on `activate_project` and corrupting each other's context.
+
+```bash
+mcpx daemon status
+#   serena (a1b2c3d4)  running  /tmp/mcpx-serena-a1b2c3d4-501.sock
+#   serena (e5f6g7h8)  running  /tmp/mcpx-serena-e5f6g7h8-501.sock
 ```
 
 ## Managing Daemons

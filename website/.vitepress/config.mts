@@ -17,10 +17,11 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/getting-started/installation' },
       { text: 'Security', link: '/security/overview' },
+      { text: 'Workspaces', link: '/workspaces/overview' },
       { text: 'Reference', link: '/reference/cli' },
       { text: 'Integrations', link: '/integrations/serena' },
       {
-        text: 'v1.4.0',
+        text: 'v1.5.0',
         items: [
           { text: 'Changelog', link: '/about/changelog' },
           { text: 'GitHub', link: 'https://github.com/codestz/mcpx' },
