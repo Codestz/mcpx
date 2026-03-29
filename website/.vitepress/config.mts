@@ -70,7 +70,7 @@ export default defineConfig({
           items: [
             { text: 'Overview', link: '/workspaces/overview' },
             { text: 'Configuration', link: '/workspaces/configuration' },
-            { text: 'Serena Monorepo', link: '/workspaces/serena-monorepo' },
+            { text: 'Patterns & Examples', link: '/workspaces/serena-monorepo' },
           ],
         },
       ],
