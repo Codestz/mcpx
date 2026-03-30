@@ -2,6 +2,28 @@
 
 Problems with daemon mode servers.
 
+## After Upgrading mcpx
+
+**Symptom:** `mcpx daemon status` shows errors or doesn't find running daemons after upgrading mcpx.
+
+**Cause:** v1.5.0 introduced scoped daemons — socket filenames changed from `/tmp/mcpx-serena-501.sock` to `/tmp/mcpx-serena-<scope>-501.sock`. Old daemons started by a previous version use the old naming and won't be discovered by the new binary.
+
+**Fix:**
+```bash
+# Kill any old daemons
+pkill -f "mcpx.*__daemon"
+
+# Clean up old socket/PID files
+rm -f /tmp/mcpx-*-$(id -u).sock /tmp/mcpx-*-$(id -u).pid
+
+# Next call starts fresh scoped daemons
+mcpx ping serena
+```
+
+::: tip
+You only need to do this once after upgrading to v1.5.0+. New daemons use scoped paths automatically.
+:::
+
 ## Stale Socket / PID File
 
 **Symptom:** Connection refused, but `mcpx daemon status` shows nothing running.
@@ -70,16 +92,20 @@ rm /tmp/mcpx-serena-$(id -u).sock
 
 ## Daemon Logs
 
-All daemon output goes to `/tmp/mcpx-<server>-<uid>.log`:
+All daemon output goes to `/tmp/mcpx-<server>-<scope>-<uid>.log`:
 
 ```bash
-cat /tmp/mcpx-serena-$(id -u).log
+# Find your daemon log
+ls /tmp/mcpx-serena-*-$(id -u).log
+
+# Read it
+cat /tmp/mcpx-serena-*-$(id -u).log
 ```
 
 Typical log entries:
 
 ```
-daemon: serena listening on /tmp/mcpx-serena-501.sock (pid 12345, idle timeout 30m0s)
+daemon: serena listening on /tmp/mcpx-serena-a1b2c3d4-501.sock (pid 12345, idle timeout 30m0s)
 daemon: serena transport died, shutting down
 daemon: serena exited
 ```
@@ -92,4 +118,4 @@ There's currently no config option to change the idle timeout — it's hardcoded
 
 ## Multiple Users
 
-Daemon sockets include the UID: `/tmp/mcpx-serena-501.sock`. Different users on the same machine get separate daemons. Socket permissions are `0600` (owner-only).
+Daemon sockets include the UID and a project scope hash: `/tmp/mcpx-serena-a1b2c3d4-501.sock`. Different users on the same machine get separate daemons. Different projects also get separate daemons. Socket permissions are `0600` (owner-only).
