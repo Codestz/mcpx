@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -26,18 +25,7 @@ type ServerConfig struct {
 	URL            string            `yaml:"url"`
 	Headers        map[string]string `yaml:"headers"`
 	Auth           *AuthConfig       `yaml:"auth"`
-	Security       *ServerSecurity    `yaml:"security"`
-	Lifecycle      *LifecycleConfig   `yaml:"lifecycle"`
-	Workspaces     []WorkspaceConfig  `yaml:"workspaces"`
-}
-
-// WorkspaceConfig defines a workspace within a monorepo.
-// Each workspace maps to a subdirectory with its own lifecycle hooks and security.
-type WorkspaceConfig struct {
-	Name      string          `yaml:"name"`
-	Path      string          `yaml:"path"`       // relative to project root
-	Lifecycle *LifecycleConfig `yaml:"lifecycle"`
-	Security  *ServerSecurity  `yaml:"security"`
+	Security       *ServerSecurity   `yaml:"security"`
 }
 
 // AuthConfig holds authentication settings for remote transports.
@@ -108,17 +96,6 @@ type ServerSecurity struct {
 	AllowedTools []string `yaml:"allowed_tools"`
 	BlockedTools []string `yaml:"blocked_tools"`
 	Policies     []Policy `yaml:"policies"`
-}
-
-// LifecycleConfig holds server lifecycle hooks.
-type LifecycleConfig struct {
-	OnConnect []LifecycleHook `yaml:"on_connect"`
-}
-
-// LifecycleHook defines a tool call executed during a lifecycle event.
-type LifecycleHook struct {
-	Tool string         `yaml:"tool"`
-	Args map[string]any `yaml:"args"`
 }
 
 // Load reads the global (~/.mcpx/config.yml) and project (.mcpx/config.yml)
@@ -265,32 +242,6 @@ func Validate(cfg *Config) error {
 				}
 			}
 		}
-
-		// Validate lifecycle hooks.
-		if sc.Lifecycle != nil {
-			for _, h := range sc.Lifecycle.OnConnect {
-				if h.Tool == "" {
-					return fmt.Errorf("config: server %q: lifecycle hook missing tool name", name)
-				}
-			}
-		}
-
-		// Validate workspaces.
-		for _, ws := range sc.Workspaces {
-			if ws.Name == "" {
-				return fmt.Errorf("config: server %q: workspace missing name", name)
-			}
-			if ws.Path == "" {
-				return fmt.Errorf("config: server %q: workspace %q missing path", name, ws.Name)
-			}
-			if ws.Lifecycle != nil {
-				for _, h := range ws.Lifecycle.OnConnect {
-					if h.Tool == "" {
-						return fmt.Errorf("config: server %q: workspace %q: lifecycle hook missing tool name", name, ws.Name)
-					}
-				}
-			}
-		}
 	}
 
 	// Validate global policies.
@@ -314,49 +265,6 @@ func validatePolicyAction(serverName string, p Policy) error {
 	default:
 		return fmt.Errorf("config: server %q: policy %q has unknown action %q (must be allow, deny, or warn)", serverName, p.Name, p.Action)
 	}
-}
-
-// ResolveWorkspace returns the workspace matching the current working directory,
-// or nil if cwd is not inside any workspace. projectRoot is the directory
-// containing .mcpx/config.yml.
-func ResolveWorkspace(sc *ServerConfig, projectRoot string) *WorkspaceConfig {
-	if len(sc.Workspaces) == 0 {
-		return nil
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil
-	}
-
-	// Resolve symlinks for reliable comparison (e.g. macOS /tmp → /private/tmp).
-	cwdReal, err := filepath.EvalSymlinks(cwd)
-	if err != nil {
-		cwdReal = cwd
-	}
-
-	// Try each workspace — longest path match wins (most specific).
-	var best *WorkspaceConfig
-	bestLen := 0
-
-	for i := range sc.Workspaces {
-		ws := &sc.Workspaces[i]
-		wsAbs := filepath.Join(projectRoot, ws.Path)
-		wsReal, err := filepath.EvalSymlinks(wsAbs)
-		if err != nil {
-			wsReal = wsAbs
-		}
-
-		// cwd must be inside the workspace directory.
-		if cwdReal == wsReal || strings.HasPrefix(cwdReal, wsReal+string(filepath.Separator)) {
-			if len(wsReal) > bestLen {
-				best = ws
-				bestLen = len(wsReal)
-			}
-		}
-	}
-
-	return best
 }
 
 // findProjectConfig walks up from the current working directory looking for

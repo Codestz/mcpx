@@ -19,7 +19,7 @@
 
 ---
 
-**mcpx** is the control plane between AI agents and [MCP](https://modelcontextprotocol.io) servers. It wraps any MCP server into a CLI command with security policies, audit logging, lifecycle hooks, and monorepo workspace routing — so teams can adopt MCP in production with confidence.
+**mcpx** is the control plane between AI agents and [MCP](https://modelcontextprotocol.io) servers. It wraps any MCP server into a CLI command with security policies, audit logging, and scoped daemon isolation — so teams can adopt MCP in production with confidence.
 
 ```bash
 # Discover → Call → Compose
@@ -69,31 +69,24 @@ error: server "postgres": policy "no-mutations" denied tool "query"
 
 ### 3. Multi-server management
 
-Each server needs lifecycle management, project activation, health checks. In a monorepo with 5 workspaces, each workspace needs different security rules and server configurations.
+Each server needs its own security profile. A code search MCP needs different rules than a database MCP or a messaging MCP. And when two developers work on different projects simultaneously, their daemons shouldn't interfere.
 
-mcpx handles this with workspace auto-detection:
+mcpx handles this with per-server security and scoped daemons:
 
 ```yaml
-workspaces:
-  - name: api
-    path: services/api
-    lifecycle:
-      on_connect:
-        - tool: activate_project
-          args: { project: "$(mcpx.project_root)/services/api" }
+servers:
+  serena:
     security:
       mode: editing
       policies:
-        - name: api-only
+        - name: source-only
           match:
             args:
-              relative_path: { allow_prefix: ["cmd/", "internal/"] }
+              relative_path: { allow_prefix: ["src/", "internal/"] }
           action: deny
-```
-
-```bash
-$ cd services/api && mcpx serena find_symbol --name "Handler"
-# Automatically activates the API workspace with the right security rules
+  postgres:
+    security:
+      mode: read-only
 ```
 
 ## Installation
@@ -130,11 +123,6 @@ servers:
     args: [start-mcp-server, --context=claude-code]
     daemon: true
     startup_timeout: 30s
-    lifecycle:
-      on_connect:
-        - tool: activate_project
-          args:
-            project: "$(mcpx.project_root)"
 ```
 
 ### 3. Use it
@@ -208,65 +196,6 @@ security:
 
 See [Security Documentation](https://codestz.github.io/mcpx/security/overview) for the full reference.
 
-## Workspaces
-
-For monorepos, mcpx auto-detects which workspace you're in and applies the right lifecycle hooks and security rules:
-
-```yaml
-servers:
-  serena:
-    command: serena
-    daemon: true
-    workspaces:
-      - name: web
-        path: packages/web
-        lifecycle:
-          on_connect:
-            - tool: activate_project
-              args: { project: "$(mcpx.project_root)/packages/web" }
-        security:
-          mode: editing
-
-      - name: api
-        path: services/api
-        lifecycle:
-          on_connect:
-            - tool: activate_project
-              args: { project: "$(mcpx.project_root)/services/api" }
-        security:
-          mode: editing
-```
-
-```bash
-$ cd packages/web && mcpx serena find_symbol --name "Dashboard"
-# Activates web workspace, finds TypeScript component
-
-$ cd services/api && mcpx serena find_symbol --name "Handler"
-# Activates API workspace, finds Go struct
-```
-
-See [Workspaces Documentation](https://codestz.github.io/mcpx/workspaces/overview) for the full guide.
-
-## Lifecycle Hooks
-
-Hooks run automatically after connecting to a server — useful for project activation, health checks, or setup:
-
-```yaml
-lifecycle:
-  on_connect:
-    - tool: activate_project
-      args:
-        project: "$(mcpx.project_root)"
-```
-
-If a hook fails, mcpx gives a clear error with actionable hints:
-
-```
-server "serena": lifecycle hook "activate_project" failed
-  Error: No project found at /Users/you/myproject
-  Hint:  Run "mcpx serena onboarding" to set up the project first
-```
-
 ## Configuration
 
 ### Two-level config
@@ -306,8 +235,6 @@ servers:
       token: "$(secret.token)"
     env: {}                  # extra environment variables
     security: {}             # per-server security config
-    lifecycle: {}            # lifecycle hooks
-    workspaces: []           # monorepo workspace definitions
 ```
 
 ## How AI Agents Use mcpx
@@ -400,7 +327,6 @@ cmd/mcpx/            entrypoint
 internal/
   config/            YAML config loading, merging, validation
   security/          policy engine, audit logging
-  lifecycle/         server lifecycle hooks (on_connect)
   resolver/          dynamic variable resolution: $(env.*), $(git.*), etc.
   mcp/               MCP protocol client (JSON-RPC 2.0 over stdio/http/sse)
   cli/               Cobra CLI, dynamic command generation from MCP schemas

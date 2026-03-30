@@ -2,7 +2,7 @@
 
 [Serena](https://github.com/oraios/serena) is a semantic code intelligence MCP server powered by Language Server Protocol (LSP). It provides deep code understanding — symbol search, references, refactoring — across dozens of languages.
 
-mcpx + Serena is the recommended setup for AI-assisted development with full security and monorepo support.
+mcpx + Serena is the recommended setup for AI-assisted development with full security.
 
 ## Why Serena + mcpx
 
@@ -10,8 +10,7 @@ mcpx + Serena is the recommended setup for AI-assisted development with full sec
 |-----------|----------|
 | Serena exposes 30+ tools (~20K tokens) | mcpx calls tools on demand — 0 tokens upfront |
 | Slow startup (LSP initialization) | Daemon mode keeps Serena warm between calls |
-| Project activation required | Lifecycle hooks activate automatically |
-| Monorepo with multiple languages | Workspace detection routes to the right project |
+| Project activation required | Daemon mode with auto-activation |
 | Need to restrict write access | Security modes and path policies |
 
 ## Basic Config
@@ -27,11 +26,6 @@ servers:
     transport: stdio
     daemon: true
     startup_timeout: 30s
-    lifecycle:
-      on_connect:
-        - tool: activate_project
-          args:
-            project: "$(mcpx.project_root)"
 ```
 
 ## First Run
@@ -84,36 +78,6 @@ mcpx serena search_for_pattern --substring_pattern "TODO|FIXME" --restrict_searc
 mcpx serena list_dir --relative_path "src/" --recursive true
 ```
 
-## Lifecycle Hooks
-
-Serena requires project activation before tools work. mcpx handles this automatically via lifecycle hooks:
-
-```yaml
-lifecycle:
-  on_connect:
-    - tool: activate_project
-      args:
-        project: "$(mcpx.project_root)"
-```
-
-Every time mcpx connects to the Serena daemon, it calls `activate_project` with the resolved project path. The AI agent never needs to think about activation.
-
-**Important:** Onboarding is NOT automatic. It's a heavy operation (indexing, language server setup) that should be run manually:
-
-```bash
-mcpx serena onboarding
-```
-
-### Error Handling
-
-If the project doesn't exist or hasn't been onboarded:
-
-```
-server "serena": lifecycle hook "activate_project" failed
-  Error: No project found at /Users/you/myproject
-  Hint:  Run "mcpx serena onboarding" to set up the project first
-```
-
 ## Security
 
 ### Read-only mode
@@ -142,35 +106,6 @@ security:
       action: deny
       message: "Writes restricted to source directories"
 ```
-
-## Monorepo Workspaces
-
-For monorepos, define workspaces so mcpx activates the right Serena project based on your current directory:
-
-```yaml
-workspaces:
-  - name: frontend
-    path: packages/web
-    lifecycle:
-      on_connect:
-        - tool: activate_project
-          args: { project: "$(mcpx.project_root)/packages/web" }
-    security:
-      mode: editing
-
-  - name: backend
-    path: services/api
-    lifecycle:
-      on_connect:
-        - tool: activate_project
-          args: { project: "$(mcpx.project_root)/services/api" }
-    security:
-      mode: editing
-```
-
-Each workspace needs its own `.serena/project.yml` with the language configured.
-
-See [Serena Monorepo Walkthrough](/workspaces/serena-monorepo) for a complete 5-workspace example.
 
 ## AI Agent Integration
 

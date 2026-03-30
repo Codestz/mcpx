@@ -49,7 +49,7 @@ func NewDaemonRunCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&command, "command", "", "Server command")
-	cmd.Flags().StringVar(&scope, "scope", "", "Daemon scope (project/workspace hash)")
+	cmd.Flags().StringVar(&scope, "scope", "", "Daemon scope (project hash)")
 	cmd.Flags().StringVar(&argsB64, "args", "", "Server args (base64 JSON)")
 	cmd.Flags().StringVar(&envB64, "env", "", "Server env (base64 JSON)")
 	cmd.Flags().IntVar(&idleMinutes, "idle", 30, "Idle timeout in minutes")

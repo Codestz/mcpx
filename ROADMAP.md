@@ -2,24 +2,23 @@
 
 > What's next for mcpx — focused on impact, not infrastructure.
 
-mcpx v1.4.0 transforms mcpx from a CLI proxy into a secure gateway for MCP servers. Security policies, audit logging, lifecycle hooks, and monorepo workspace routing make mcpx ready for production teams.
+mcpx v1.5.0 transforms mcpx from a CLI proxy into a secure gateway for MCP servers. Security policies, audit logging, and scoped daemons make mcpx ready for teams.
 
 ---
 
-## v1.4 — Secure Gateway ✅ (shipped 2026-03-28)
+## v1.5 — Secure Gateway ✅ (shipped 2026-03-30)
 
 **Theme:** The missing control plane between AI agents and MCP servers.
 
 ### Shipped
 
 - **Security policy engine** — tool allow/deny, argument inspection, content regex (SQL mutations, path traversal). Global + per-server cascading.
-- **Security modes** — `read-only`, `editing`, `custom` presets. Per-server and per-workspace.
+- **Security modes** — `read-only`, `editing`, `custom` presets. Per-server.
 - **Audit logging** — JSONL audit trail for every tool call. Secret redaction. Configurable log path.
-- **Lifecycle hooks** — `on_connect` hooks for automatic project activation (Serena, etc). Clear error messages with actionable hints.
-- **Monorepo workspaces** — auto-detect workspace from cwd. Per-workspace lifecycle hooks and security policies.
+- **Scoped daemons** — each project gets its own daemon process, preventing cross-session races.
 - **Allowed/blocked tool lists** — per-server whitelist/blacklist with glob patterns.
 - **Content matching** — `deny_pattern`, `require_pattern`, `when` clause for deep argument inspection.
-- **Website redesign** — new landing page, Security section (5 pages), Workspaces section (3 pages), Integrations section (5 pages).
+- **Website redesign** — new landing page, Security section (5 pages), Integrations section (5 pages).
 - **README rebrand** — "Secure gateway for MCP servers — from CLI to production."
 
 ---

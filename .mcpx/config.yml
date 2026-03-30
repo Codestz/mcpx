@@ -23,11 +23,7 @@ servers:
         args:
             - start-mcp-server
             - --context=claude-code
+            - --project-from-cwd
         transport: stdio
         daemon: true
         startup_timeout: 30s
-        lifecycle:
-            on_connect:
-                - tool: activate_project
-                  args:
-                      project: "$(mcpx.project_root)"

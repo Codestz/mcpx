@@ -315,7 +315,7 @@ func performHandshake(transport *mcp.StdioTransport) (json.RawMessage, error) {
 }
 
 // SocketPath returns the unix socket path for a server's daemon.
-// Scope isolates daemons per project/workspace (e.g. hash of project root).
+// Scope isolates daemons per project (e.g. hash of project root).
 func SocketPath(serverName, scope string) string {
 	if scope != "" {
 		return fmt.Sprintf("/tmp/mcpx-%s-%s-%d.sock", serverName, scope, os.Getuid())
