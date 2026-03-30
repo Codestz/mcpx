@@ -42,7 +42,7 @@ mcpx CLI ──► unix socket ──► daemon process ──► MCP server sub
 
 ### Socket Location
 
-Daemons are scoped by project and workspace to prevent cross-session conflicts:
+Daemons are scoped by project to prevent cross-session conflicts:
 
 ```
 /tmp/mcpx-<server>-<scope>-<uid>.sock    # unix socket (mode 0600)
@@ -50,11 +50,10 @@ Daemons are scoped by project and workspace to prevent cross-session conflicts:
 /tmp/mcpx-<server>-<scope>-<uid>.log     # daemon log
 ```
 
-The `<scope>` is a short hash (8 hex chars) of the project root path + workspace name. This means:
+The `<scope>` is a short hash (8 hex chars) of the project root path. This means:
 
 - **Two different projects** → two separate daemons (different scope hashes)
-- **Two workspaces in the same monorepo** → two separate daemons
-- **Same project, same workspace** → shared daemon (correct)
+- **Same project** → shared daemon (correct)
 
 This prevents a common problem: two Claude Code sessions working on different projects would share one Serena daemon, racing on `activate_project` and corrupting each other's context.
 

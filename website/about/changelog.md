@@ -5,46 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.5.0] - 2026-03-29
+## [1.5.0] - 2026-03-30
 
 ### Added
 
-- **Scoped daemons** — each project/workspace gets its own daemon process, preventing cross-session races. Two Claude sessions on different projects no longer share a Serena daemon. Scope is a hash of the project root path + workspace name, embedded in socket/PID/log filenames.
+- **Scoped daemons** — each project gets its own daemon process, preventing cross-session races. Two Claude sessions on different projects no longer share a Serena daemon. Scope is a hash of the project root path, embedded in socket/PID/log filenames.
 - **Daemon discovery** — `daemon status` now discovers all running scoped daemons via PID file globbing. `daemon stop` and `daemon stop-all` handle scoped daemons correctly.
-- **Workspaces in top nav** — Workspaces section now accessible directly from the website navigation bar.
-
-### Changed
-
-- `SocketPath`, `PIDPath`, `LogPath` accept a `scope` parameter. Socket paths become `/tmp/mcpx-<server>-<scope>-<uid>.sock`.
-- `EnsureRunning`, `IsRunning`, `Stop`, `Start` accept scope for daemon isolation.
-- `daemon status` shows scope identifiers next to running daemons.
-- Client version bumped to `1.5.0` in MCP handshake.
-
-## [1.4.0] - 2026-03-28
-
-### Added
-
 - **Security policy engine** — evaluate tool calls against configurable policies before they reach the server. Supports tool name globs, argument inspection (deny/allow prefix, deny pattern), and content regex matching (e.g. SQL mutation blocking). Global policies cascade with per-server overrides.
-- **Security modes** — one-line presets: `read-only` (blocks all write tools), `editing` (full access), `custom` (policies only). Per-server and per-workspace.
+- **Security modes** — one-line presets: `read-only` (blocks all write tools), `editing` (full access), `custom` (policies only). Per-server.
 - **Audit logging** — every tool call recorded in JSONL with timestamps, server name, tool, arguments, and policy decisions. Configurable log path with variable resolution. Secret redaction for sensitive values.
-- **Lifecycle hooks** — `on_connect` hooks execute tool calls automatically after MCP handshake (e.g. `activate_project` for Serena). Sequential execution with clear error messages and actionable hints on failure.
-- **Monorepo workspaces** — auto-detect workspace from `cwd` and apply workspace-specific lifecycle hooks and security policies. Longest-path match for nested workspaces. Falls back to server-level defaults outside any workspace.
 - **Allowed/blocked tool lists** — per-server whitelist (`allowed_tools`) and blacklist (`blocked_tools`) with glob pattern support.
 - **Content matching** — `content.deny_pattern` and `content.require_pattern` with conditional `when` clause for inspecting argument values (SQL queries, code snippets, file paths).
-- **Rate limiting config** — `max_calls_per_minute` and `max_calls_per_tool` fields in global security config.
 
 ### Changed
 
 - **Branding** — repositioned from "MCP servers as CLI tools" to "Secure gateway for MCP servers — from CLI to production".
-- **Website redesigned** — new landing page with full-width layout, security showcase, animated terminal demos, 4-column feature grid. New sections: Security (5 pages), Workspaces (3 pages), Integrations (5 pages).
-- **Config schema expanded** — `security` (top-level and per-server), `lifecycle`, `workspaces` fields added to `ServerConfig`.
+- **Website redesigned** — new landing page with full-width layout, security showcase, animated terminal demos, 4-column feature grid. New sections: Security (5 pages), Integrations (5 pages).
+- **Config schema expanded** — `security` (top-level and per-server) fields added to `ServerConfig`.
 - **README rewritten** — three-pillar structure (context cost, security, multi-server management) with YAML examples and live denial output.
-- Client version bumped to `1.4.0` in MCP handshake.
+- `SocketPath`, `PIDPath`, `LogPath` accept a `scope` parameter for project isolation.
+- Client version bumped to `1.5.0` in MCP handshake.
 
 ### New packages
 
 - `internal/security/` — policy engine (`Evaluator`), audit logger (`AuditLogger`), action types, result types.
-- `internal/lifecycle/` — `RunOnConnect` hook executor with error formatting and hints.
 
 ## [1.3.0] - 2026-03-14
 

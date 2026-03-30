@@ -56,18 +56,6 @@ servers:
       blocked_tools: [string]
       policies: [...]            # same as global policies
 
-    # Lifecycle
-    lifecycle:
-      on_connect:
-        - tool: string
-          args: { key: value }
-
-    # Workspaces (monorepo)
-    workspaces:
-      - name: string
-        path: string             # relative to project root
-        lifecycle: { ... }       # overrides server lifecycle
-        security: { ... }        # overrides server security
 ```
 
 ## Field Reference
@@ -190,45 +178,6 @@ security:
       message: "Restricted to src/"
 ```
 
-#### `lifecycle`
-
-Hooks that run after connecting to the server. See [Lifecycle Hooks](#lifecycle-hooks).
-
-```yaml
-lifecycle:
-  on_connect:
-    - tool: activate_project
-      args: { project: "$(mcpx.project_root)" }
-```
-
-#### `workspaces`
-
-Monorepo workspace definitions. See [Workspaces](/workspaces/overview).
-
-```yaml
-workspaces:
-  - name: frontend
-    path: packages/web
-    lifecycle: { ... }
-    security: { ... }
-```
-
-## Lifecycle Hooks
-
-Hooks run automatically after the MCP handshake completes. They execute sequentially — if any hook fails, remaining hooks are skipped and an error is returned.
-
-```yaml
-lifecycle:
-  on_connect:
-    - tool: activate_project
-      args:
-        project: "$(mcpx.project_root)"
-```
-
-Hook arguments support [dynamic variables](/guide/variables). The `tool` field is the MCP tool name to call on the server.
-
-**Important:** Hooks should be lightweight and idempotent. Heavy operations like onboarding should be run manually.
-
 ## Example: Complete Config
 
 ```yaml
@@ -254,21 +203,8 @@ servers:
     args: [start-mcp-server, --context=claude-code]
     daemon: true
     startup_timeout: 30s
-    lifecycle:
-      on_connect:
-        - tool: activate_project
-          args: { project: "$(mcpx.project_root)" }
     security:
       mode: editing
-    workspaces:
-      - name: api
-        path: services/api
-        lifecycle:
-          on_connect:
-            - tool: activate_project
-              args: { project: "$(mcpx.project_root)/services/api" }
-        security:
-          mode: editing
 
   postgres:
     command: postgres-mcp

@@ -51,7 +51,7 @@ func IsRunning(serverName, scope string) bool {
 
 // EnsureRunning makes sure a daemon is running for the server.
 // If not already running, it spawns one as a detached process.
-// Scope isolates daemons per project/workspace.
+// Scope isolates daemons per project.
 // Returns the socket path to connect to.
 func EnsureRunning(ctx context.Context, serverName, scope string, command string, args []string, env []string, startupTimeout time.Duration) (string, error) {
 	socketPath := SocketPath(serverName, scope)

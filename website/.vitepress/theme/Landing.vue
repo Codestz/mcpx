@@ -73,8 +73,8 @@ onMounted(() => {
             and <span class="ul">MCP servers</span>.
           </h1>
           <p class="hero-sub">
-            Security policies. Audit logging. Lifecycle hooks.<br>
-            Workspace routing. One binary. Zero tokens upfront.
+            Security policies. Audit logging. Daemon mode.<br>
+            Project isolation. One binary. Zero tokens upfront.
           </p>
           <div class="hero-actions">
             <a :href="withBase('/getting-started/installation')" class="btn primary">Get Started</a>
@@ -160,8 +160,8 @@ onMounted(() => {
               <div class="tl">5 servers configured</div>
               <div class="tl">Security policies per server</div>
               <div class="tl">Audit log for every call</div>
-              <div class="tl">Lifecycle hooks on connect</div>
-              <div class="tl">Workspace auto-detection</div>
+              <div class="tl">Scoped daemon isolation</div>
+              <div class="tl">Per-server security modes</div>
               <div class="tl">&nbsp;</div>
               <div class="tl accent-good">0 tokens. Full security. Full audit.</div>
             </div>
@@ -262,13 +262,13 @@ onMounted(() => {
             <h3>Audit Logging</h3>
             <p>Every tool call recorded in JSONL. Timestamps, args, policy decisions. Secret redaction built in.</p>
           </a>
-          <a :href="withBase('/workspaces/overview')" class="feat link">
-            <h3>Workspaces</h3>
-            <p>Monorepo auto-detection. Per-workspace lifecycle hooks and security profiles. One config file.</p>
+          <a :href="withBase('/guide/daemon-mode')" class="feat link">
+            <h3>Scoped Daemons</h3>
+            <p>Project-scoped daemon isolation. Each project gets its own daemon instance. No cross-session conflicts.</p>
           </a>
           <a :href="withBase('/integrations/serena')" class="feat link">
             <h3>Serena Integration</h3>
-            <p>Lifecycle hooks for project activation. Workspace routing for monorepos. Path-restricted editing.</p>
+            <p>Daemon mode for fast startup. Security modes and path-restricted editing. Zero-config integration.</p>
           </a>
           <div class="feat">
             <h3>Daemon Mode</h3>
@@ -294,11 +294,11 @@ onMounted(() => {
     <section class="cta">
       <div class="cta-inner">
         <h2>The missing control plane for MCP.</h2>
-        <p>Security, audit, lifecycle — from CLI to production.</p>
+        <p>Security, audit, daemon mode — from CLI to production.</p>
         <div class="cta-actions">
           <a :href="withBase('/getting-started/installation')" class="btn primary">Get Started</a>
           <a :href="withBase('/about/why-mcpx')" class="btn secondary">Why mcpx</a>
-          <a :href="withBase('/workspaces/serena-monorepo')" class="btn ghost">Monorepo Walkthrough</a>
+          <a :href="withBase('/guide/daemon-mode')" class="btn ghost">Daemon Mode</a>
         </div>
       </div>
     </section>

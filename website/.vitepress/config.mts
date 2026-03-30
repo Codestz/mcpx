@@ -7,7 +7,7 @@ export default defineConfig({
   head: [
     ['meta', { name: 'theme-color', content: '#000000' }],
     ['meta', { property: 'og:title', content: 'MCPX — Secure MCP Gateway' }],
-    ['meta', { property: 'og:description', content: 'Secure gateway for MCP servers — from CLI to production. Security policies, audit logging, lifecycle hooks, and monorepo workspaces.' }],
+    ['meta', { property: 'og:description', content: 'Secure gateway for MCP servers — from CLI to production. Security policies, audit logging, and scoped daemon isolation.' }],
   ],
 
   themeConfig: {
@@ -17,7 +17,6 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/getting-started/installation' },
       { text: 'Security', link: '/security/overview' },
-      { text: 'Workspaces', link: '/workspaces/overview' },
       { text: 'Reference', link: '/reference/cli' },
       { text: 'Integrations', link: '/integrations/serena' },
       {
@@ -62,16 +61,6 @@ export default defineConfig({
             { text: 'Modes', link: '/security/modes' },
             { text: 'Audit Logging', link: '/security/audit-logging' },
             { text: 'Examples', link: '/security/examples' },
-          ],
-        },
-      ],
-      '/workspaces/': [
-        {
-          text: 'Workspaces',
-          items: [
-            { text: 'Overview', link: '/workspaces/overview' },
-            { text: 'Configuration', link: '/workspaces/configuration' },
-            { text: 'Patterns & Examples', link: '/workspaces/serena-monorepo' },
           ],
         },
       ],

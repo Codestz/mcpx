@@ -18,8 +18,7 @@ Agent (Claude, Cursor, Codex)
 │  mcpx                   │
 │  ├─ Security policies   │  ← decides WHAT you can do
 │  ├─ Audit trail         │  ← records EVERYTHING
-│  ├─ Lifecycle hooks     │  ← handles HOW servers start
-│  └─ Workspace routing   │  ← knows WHERE you are
+│  └─ Scoped daemons      │  ← isolates per project
 └─────────────────────────┘
        │
        ▼
@@ -67,6 +66,5 @@ The call never reaches the server. The denial is logged to the audit trail.
 
 - **Deny by default**: If a policy matches and the action is `deny`, the call is blocked before it reaches the server
 - **Global + per-server**: Global policies apply everywhere, server policies add specificity
-- **Workspace-aware**: Each monorepo workspace can have its own security profile
 - **Zero overhead**: Policy evaluation is in-process, sub-millisecond
 - **Protocol-level**: Works with any MCP server — security operates on tool names and arguments, not server internals

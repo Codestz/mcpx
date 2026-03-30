@@ -100,22 +100,3 @@ servers:
           action: deny
           message: "Cannot modify vendor directories"
 ```
-
-## Per-Workspace Modes
-
-In a monorepo, each workspace can have its own mode:
-
-```yaml
-servers:
-  serena:
-    workspaces:
-      - name: ml-pipeline
-        path: services/ml
-        security:
-          mode: read-only        # ML code is read-only
-
-      - name: api
-        path: services/api
-        security:
-          mode: editing          # API code is editable
-```

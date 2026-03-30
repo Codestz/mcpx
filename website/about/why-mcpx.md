@@ -29,15 +29,15 @@ An AI agent connected to a Postgres MCP can `DROP TABLE` as easily as it can `SE
 
 ## 3. Multi-Server Management
 
-Each MCP server needs lifecycle management — project activation, health checks, workspace routing. In a monorepo with multiple projects, each workspace needs different security rules and server configurations.
+Each MCP server needs its own security profile — a database MCP needs different rules than a code search MCP. And when two developers work on different projects simultaneously, their daemons shouldn't interfere.
 
-**mcpx handles this automatically.** Lifecycle hooks run after connecting. Workspace auto-detection applies the right project and security profile based on your current directory. One config file manages everything.
+**mcpx handles this automatically.** Per-server security policies, scoped daemon isolation, and a single config file that manages everything.
 
 ## The Insight
 
 AI agents already know how to use terminals. They compose commands, pipe output, parse JSON. The terminal is the universal interface.
 
-mcpx converts every MCP server into a CLI command — and adds the security, lifecycle, and workspace management that production teams need.
+mcpx converts every MCP server into a CLI command — and adds the security controls that production teams need.
 
 ## What This Unlocks
 
@@ -55,9 +55,6 @@ Every MCP tool becomes a UNIX command. Pipe between servers, redirect output, co
 
 ### Scalability
 Adding a new server doesn't increase context cost. 5 servers or 50 — the AI pays the same: zero tokens upfront.
-
-### Monorepo support
-Workspace auto-detection with per-workspace security and lifecycle hooks. One config for the entire monorepo.
 
 ## What MCPX Is Not
 

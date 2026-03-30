@@ -13,7 +13,6 @@ import (
 
 	"github.com/codestz/mcpx/internal/config"
 	"github.com/codestz/mcpx/internal/daemon"
-	"github.com/codestz/mcpx/internal/lifecycle"
 	"github.com/codestz/mcpx/internal/mcp"
 	"github.com/codestz/mcpx/internal/resolver"
 	"github.com/codestz/mcpx/internal/secret"
@@ -272,14 +271,8 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 	}
 
 	// Evaluate security policies before calling the tool.
-	// Use workspace security if cwd is inside a workspace.
 	if globalSec != nil && globalSec.Enabled || sc.Security != nil {
-		serverSec := sc.Security
-		projectRoot, _ := findProjectRoot()
-		if ws := config.ResolveWorkspace(sc, projectRoot); ws != nil && ws.Security != nil {
-			serverSec = ws.Security
-		}
-		eval := security.NewEvaluator(serverName, globalSec, serverSec)
+		eval := security.NewEvaluator(serverName, globalSec, sc.Security)
 		secResult := eval.Evaluate(toolName, toolArgs)
 
 		switch secResult.Action {
@@ -671,7 +664,7 @@ func parseToolFlagsInternal(tool *mcp.Tool, rawArgs []string, skipRequired bool)
 	return result, nil
 }
 
-// connectServer resolves variables, connects to the MCP server, and runs lifecycle hooks.
+// connectServer resolves variables and connects to the MCP server.
 // Routes to the appropriate transport based on config: http, sse, daemon, or stdio.
 func connectServer(ctx context.Context, name string, sc *config.ServerConfig) (*mcp.Client, func(), error) {
 	timeout := 30 * time.Second
@@ -694,12 +687,6 @@ func connectServer(ctx context.Context, name string, sc *config.ServerConfig) (*
 		client, cleanup, err = connectStdio(ctx, name, sc, timeout)
 	}
 	if err != nil {
-		return nil, nil, err
-	}
-
-	// Run lifecycle hooks (e.g. activate_project for Serena).
-	if err := runLifecycleHooks(ctx, client, name, sc); err != nil {
-		cleanup()
 		return nil, nil, err
 	}
 
@@ -780,7 +767,7 @@ func connectStdio(ctx context.Context, name string, sc *config.ServerConfig, tim
 
 	// Daemon mode: connect via unix socket to a long-running process.
 	if sc.Daemon {
-		scope := daemonScope(sc)
+		scope := daemonScope()
 		socketPath, err := daemon.EnsureRunning(ctx, name, scope, sc.Command, resolvedArgs, envSlice, timeout)
 		if err != nil {
 			return nil, nil, fmt.Errorf("server %q: daemon: %w", name, err)
@@ -828,19 +815,13 @@ func connectStdio(ctx context.Context, name string, sc *config.ServerConfig, tim
 }
 
 // daemonScope computes a scope string for daemon isolation.
-// Each unique project root + workspace combination gets its own daemon.
-func daemonScope(sc *config.ServerConfig) string {
+// Each unique project root gets its own daemon.
+func daemonScope() string {
 	projectRoot, _ := findProjectRoot()
 	if projectRoot == "" {
 		return ""
 	}
-
-	key := projectRoot
-	if ws := config.ResolveWorkspace(sc, projectRoot); ws != nil {
-		key += "/" + ws.Name
-	}
-
-	h := sha256.Sum256([]byte(key))
+	h := sha256.Sum256([]byte(projectRoot))
 	return fmt.Sprintf("%x", h[:4]) // 8 hex chars
 }
 
@@ -870,60 +851,6 @@ func logAudit(globalSec *config.SecurityConfig, serverName, toolName string, arg
 		PolicyName: result.PolicyName,
 		Message:    result.Message,
 	})
-}
-
-// runLifecycleHooks executes on_connect hooks for a server if configured.
-// If workspaces are defined and cwd is inside one, workspace hooks are used instead.
-func runLifecycleHooks(ctx context.Context, client *mcp.Client, serverName string, sc *config.ServerConfig) error {
-	projectRoot, _ := findProjectRoot()
-
-	// Determine which hooks to run: workspace-specific or server-level.
-	hooks := getActiveHooks(sc, projectRoot)
-	if len(hooks) == 0 {
-		return nil
-	}
-
-	// Resolve $(var) patterns in hook args.
-	secrets := secret.NewKeyringStore()
-	res := resolver.New(projectRoot, secrets)
-
-	resolvedHooks := make([]config.LifecycleHook, len(hooks))
-	for i, hook := range hooks {
-		resolvedHooks[i] = config.LifecycleHook{
-			Tool: hook.Tool,
-			Args: make(map[string]any, len(hook.Args)),
-		}
-		for k, v := range hook.Args {
-			if strVal, ok := v.(string); ok {
-				resolved, err := res.Resolve(strVal)
-				if err != nil {
-					return fmt.Errorf("server %q: lifecycle hook %q: resolve arg %q: %w", serverName, hook.Tool, k, err)
-				}
-				resolvedHooks[i].Args[k] = resolved
-			} else {
-				resolvedHooks[i].Args[k] = v
-			}
-		}
-	}
-
-	return lifecycle.RunOnConnect(ctx, client, serverName, resolvedHooks)
-}
-
-// getActiveHooks returns the lifecycle hooks to execute based on cwd.
-// If cwd is inside a workspace, workspace hooks are used. Otherwise, server-level hooks.
-func getActiveHooks(sc *config.ServerConfig, projectRoot string) []config.LifecycleHook {
-	// Check for workspace match.
-	ws := config.ResolveWorkspace(sc, projectRoot)
-	if ws != nil && ws.Lifecycle != nil && len(ws.Lifecycle.OnConnect) > 0 {
-		return ws.Lifecycle.OnConnect
-	}
-
-	// Fall back to server-level hooks.
-	if sc.Lifecycle != nil {
-		return sc.Lifecycle.OnConnect
-	}
-
-	return nil
 }
 
 // resolveHeaders builds the HTTP headers map from config, including auth.

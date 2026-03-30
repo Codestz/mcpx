@@ -331,11 +331,6 @@ servers:
               deny_pattern: "(?i)DROP"
           action: deny
           message: "DROP blocked"
-    lifecycle:
-      on_connect:
-        - tool: activate_project
-          args:
-            project: /tmp/myproject
 `)
 
 	cfg, err := parse(path)
@@ -390,20 +385,6 @@ servers:
 		t.Errorf("content.target = %q, want args.sql", sc.Security.Policies[0].Match.Content.Target)
 	}
 
-	// Lifecycle.
-	if sc.Lifecycle == nil {
-		t.Fatal("expected lifecycle config")
-	}
-	if len(sc.Lifecycle.OnConnect) != 1 {
-		t.Fatalf("on_connect hooks count = %d, want 1", len(sc.Lifecycle.OnConnect))
-	}
-	hook := sc.Lifecycle.OnConnect[0]
-	if hook.Tool != "activate_project" {
-		t.Errorf("hook.tool = %q, want activate_project", hook.Tool)
-	}
-	if hook.Args["project"] != "/tmp/myproject" {
-		t.Errorf("hook.args.project = %v, want /tmp/myproject", hook.Args["project"])
-	}
 }
 
 func TestValidate_SecurityMode(t *testing.T) {
@@ -459,166 +440,6 @@ func TestValidate_PolicyAction(t *testing.T) {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-func TestValidate_LifecycleHookMissingTool(t *testing.T) {
-	cfg := &Config{Servers: map[string]*ServerConfig{
-		"s": {
-			Command:   "x",
-			Transport: "stdio",
-			Lifecycle: &LifecycleConfig{
-				OnConnect: []LifecycleHook{{Tool: ""}},
-			},
-		},
-	}}
-	err := Validate(cfg)
-	if err == nil {
-		t.Fatal("expected error for empty hook tool name")
-	}
-}
-
-func TestParse_Workspaces(t *testing.T) {
-	dir := t.TempDir()
-	path := writeFile(t, dir, "config.yml", `servers:
-  serena:
-    command: serena
-    workspaces:
-      - name: frontend
-        path: packages/web
-        lifecycle:
-          on_connect:
-            - tool: activate_project
-              args:
-                project: /monorepo/packages/web
-        security:
-          mode: read-only
-      - name: backend
-        path: services/api
-        lifecycle:
-          on_connect:
-            - tool: activate_project
-              args:
-                project: /monorepo/services/api
-        security:
-          mode: editing
-`)
-
-	cfg, err := parse(path)
-	if err != nil {
-		t.Fatalf("parse error: %v", err)
-	}
-
-	sc := cfg.Servers["serena"]
-	if len(sc.Workspaces) != 2 {
-		t.Fatalf("workspaces count = %d, want 2", len(sc.Workspaces))
-	}
-
-	ws0 := sc.Workspaces[0]
-	if ws0.Name != "frontend" {
-		t.Errorf("ws[0].name = %q, want frontend", ws0.Name)
-	}
-	if ws0.Path != "packages/web" {
-		t.Errorf("ws[0].path = %q, want packages/web", ws0.Path)
-	}
-	if ws0.Security == nil || ws0.Security.Mode != "read-only" {
-		t.Errorf("ws[0].security.mode != read-only")
-	}
-	if ws0.Lifecycle == nil || len(ws0.Lifecycle.OnConnect) != 1 {
-		t.Fatal("ws[0] missing lifecycle hooks")
-	}
-
-	ws1 := sc.Workspaces[1]
-	if ws1.Name != "backend" {
-		t.Errorf("ws[1].name = %q, want backend", ws1.Name)
-	}
-	if ws1.Security == nil || ws1.Security.Mode != "editing" {
-		t.Errorf("ws[1].security.mode != editing")
-	}
-}
-
-func TestResolveWorkspace(t *testing.T) {
-	// Create a temp directory to simulate project root with workspaces.
-	root := t.TempDir()
-	os.MkdirAll(filepath.Join(root, "packages", "web", "src"), 0o755)
-	os.MkdirAll(filepath.Join(root, "services", "api", "internal"), 0o755)
-	os.MkdirAll(filepath.Join(root, "docs"), 0o755)
-
-	sc := &ServerConfig{
-		Command:   "serena",
-		Transport: "stdio",
-		Workspaces: []WorkspaceConfig{
-			{Name: "frontend", Path: "packages/web"},
-			{Name: "backend", Path: "services/api"},
-		},
-	}
-
-	tests := []struct {
-		name    string
-		cwd     string
-		wantWS  string
-		wantNil bool
-	}{
-		{"inside frontend", filepath.Join(root, "packages", "web", "src"), "frontend", false},
-		{"at frontend root", filepath.Join(root, "packages", "web"), "frontend", false},
-		{"inside backend", filepath.Join(root, "services", "api", "internal"), "backend", false},
-		{"at project root", root, "", true},
-		{"in docs (no workspace)", filepath.Join(root, "docs"), "", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Change cwd for test.
-			origDir, _ := os.Getwd()
-			os.Chdir(tt.cwd)
-			defer os.Chdir(origDir)
-
-			ws := ResolveWorkspace(sc, root)
-			if tt.wantNil {
-				if ws != nil {
-					t.Errorf("expected nil, got workspace %q", ws.Name)
-				}
-				return
-			}
-			if ws == nil {
-				t.Fatalf("expected workspace %q, got nil", tt.wantWS)
-			}
-			if ws.Name != tt.wantWS {
-				t.Errorf("workspace = %q, want %q", ws.Name, tt.wantWS)
-			}
-		})
-	}
-}
-
-func TestValidate_WorkspaceMissingName(t *testing.T) {
-	cfg := &Config{Servers: map[string]*ServerConfig{
-		"s": {
-			Command:   "x",
-			Transport: "stdio",
-			Workspaces: []WorkspaceConfig{
-				{Path: "packages/web"},
-			},
-		},
-	}}
-	err := Validate(cfg)
-	if err == nil {
-		t.Fatal("expected error for workspace missing name")
-	}
-}
-
-func TestValidate_WorkspaceMissingPath(t *testing.T) {
-	cfg := &Config{Servers: map[string]*ServerConfig{
-		"s": {
-			Command:   "x",
-			Transport: "stdio",
-			Workspaces: []WorkspaceConfig{
-				{Name: "frontend"},
-			},
-		},
-	}}
-	err := Validate(cfg)
-	if err == nil {
-		t.Fatal("expected error for workspace missing path")
 	}
 }
 
