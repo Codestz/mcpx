@@ -20,6 +20,20 @@ func TestResultKeyStable(t *testing.T) {
 	}
 }
 
+func TestResultKeyExtrasParticipateInHash(t *testing.T) {
+	args := map[string]any{"x": 1}
+	a := ResultKey("s", "t", args)
+	b := ResultKey("s", "t", args, "extra1")
+	c := ResultKey("s", "t", args, "extra2")
+	if a == b || b == c {
+		t.Errorf("extras should change the key: %s / %s / %s", a, b, c)
+	}
+	d := ResultKey("s", "t", args, "extra1")
+	if b != d {
+		t.Errorf("same extras should yield same key: %s vs %s", b, d)
+	}
+}
+
 func TestSaveLoadResult(t *testing.T) {
 	defer withTempHome(t)()
 

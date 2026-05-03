@@ -24,9 +24,15 @@ type ResultEntry struct {
 	Result     mcp.CallResult `json:"result"`
 }
 
-// ResultKey hashes (server, tool, normalized-args-JSON) into a stable cache key.
-// Args are normalized via canonical JSON so map ordering doesn't break cache hits.
-func ResultKey(server, tool string, args map[string]any) string {
+// ResultKey hashes (server, tool, normalized-args-JSON, ...extras) into a
+// stable cache key. Args are normalized via canonical JSON so map ordering
+// doesn't break cache hits.
+//
+// The extras slice lets callers mix in additional bytes that participate in
+// the hash without entering the args map. The cli layer uses it to fold in
+// file mtimes when args contain a `relative_path`, so editing a file
+// invalidates cached results that depend on it.
+func ResultKey(server, tool string, args map[string]any, extras ...string) string {
 	canon := canonicalize(args)
 	h := sha256.New()
 	_, _ = h.Write([]byte(server))
@@ -34,6 +40,10 @@ func ResultKey(server, tool string, args map[string]any) string {
 	_, _ = h.Write([]byte(tool))
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(canon))
+	for _, e := range extras {
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(e))
+	}
 	return hex.EncodeToString(h.Sum(nil))[:24]
 }
 

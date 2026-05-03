@@ -2,6 +2,9 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/codestz/mcpx/internal/config"
@@ -91,13 +94,26 @@ func schemaTTL(_ *config.ServerConfig) time.Duration {
 	}
 	return d
 }
+// callToolCached wraps client.CallTool with the idempotent result cache.
+//
+// Idempotence is decided per (config, tool) — see schemacache.IsIdempotent.
+// Errors and non-idempotent calls always go to the live MCP server. Successful
+// idempotent calls are persisted with the configured TTL.
+//
+// File mtime participates in the cache key when args contain a `relative_path`
+// (or `path`/`file`/`file_path`) that resolves to an existing file or directory.
+// This keeps cached results from going stale across edits within the TTL window:
+// any change to the file shifts the key and the next call falls through to a
+// fresh fetch.
 func callToolCached(ctx context.Context, client *mcp.Client, serverName string, tool *mcp.Tool, args map[string]any) (*mcp.CallResult, bool, error) {
 	cc, allow, heur, ttl, enabled := resolveResultCachePolicy()
 	useCache := enabled && !schemacache.Bypass() && cc != nil &&
 		schemacache.IsIdempotent(tool, serverName, allow, heur)
 
 	if useCache {
-		key := schemacache.ResultKey(serverName, tool.Name, args)
+		root, _ := findProjectRoot()
+		extras := fileMtimeExtras(args, root)
+		key := schemacache.ResultKey(serverName, tool.Name, args, extras...)
 		if entry, hit, _ := schemacache.LoadResult(key); hit {
 			r := entry.Result
 			return &r, true, nil
@@ -117,6 +133,44 @@ func callToolCached(ctx context.Context, client *mcp.Client, serverName string, 
 
 	result, err := client.CallTool(ctx, tool.Name, args)
 	return result, false, err
+}
+
+// fileMtimeExtras inspects args for keys that conventionally hold filesystem
+// paths (`relative_path`, `path`, `file`, `file_path`) and returns
+// `path:mtime-ns` strings for each one that resolves to an existing file or
+// directory under root.
+//
+// Edits change the mtime, which changes the cache key, which forces a fresh
+// fetch. Tools that read entire subtrees (e.g. recursive search) can still go
+// stale if a deep file changes without touching the named path —
+// `MCPX_CACHE=off` is the right escape hatch for those cases.
+func fileMtimeExtras(args map[string]any, root string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+	candidates := []string{"relative_path", "path", "file", "file_path"}
+
+	var out []string
+	for _, key := range candidates {
+		raw, ok := args[key]
+		if !ok {
+			continue
+		}
+		p, ok := raw.(string)
+		if !ok || p == "" {
+			continue
+		}
+		full := p
+		if !filepath.IsAbs(p) && root != "" {
+			full = filepath.Join(root, p)
+		}
+		info, err := os.Stat(full)
+		if err != nil {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s:%d", p, info.ModTime().UnixNano()))
+	}
+	return out
 }
 
 func resolveResultCachePolicy() (*config.CacheConfig, []string, bool, time.Duration, bool) {

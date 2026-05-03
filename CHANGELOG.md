@@ -13,7 +13,7 @@ The "Agentic Supremacy" release. mcpx becomes a measurable, observable, and inte
 
 - **JSONL stats** (`internal/stats/`) — every tool call writes one line to `~/.mcpx/stats.jsonl`: timestamp, args, latency, cache hits, exit code, tokens saved vs native MCP loading. Async writer; never blocks the caller.
 - **Schema cache** (`internal/schemacache/`) — `tools/list` (and prompts/resources) cached at `~/.mcpx/cache/schemas/<key>.json` with TTL. First call per server is slow; everything after is instant. Computes `native_baseline_tokens` once at populate time so the stats writer can quote real savings.
-- **Result cache** — idempotent calls (`get_*`/`list_*`/`find_*`/`search_*`/`read_*` heuristic, plus explicit allow-list) deduplicate within `cache.result_ttl` (default 30s).
+- **Result cache** — idempotent calls (`get_*`/`list_*`/`find_*`/`search_*`/`read_*` heuristic, plus explicit allow-list) deduplicate within `cache.result_ttl` (default 30s). **File mtime participates in the cache key** when args contain a `relative_path` (or `path`/`file`/`file_path`) — editing the underlying file shifts the key and forces a fresh fetch, so cached reads cannot return stale data after an edit.
 - **Schema normalizer** — handles JSON Schema union types (`type: ["string","null"]`), `oneOf`/`anyOf`/`allOf`, `$ref`; unknown keywords preserved in `Ext`. Fixes #14 (Sentry MCP server initialization).
 
 ### Added — Agent superpowers
