@@ -228,7 +228,6 @@ func (s *server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		"P95LatencyMS":   summary.P95LatencyMS,
 		"CacheHitRate":   summary.CacheHitRate,
 		"SchemaHitRate":  summary.SchemaHitRate,
-		"ResultHitRate":  summary.ResultHitRate,
 		"ErrorRate":      summary.ErrorRate,
 		"TopTools":       summary.TopTools,
 		"TopSavers":      summary.TopSavers,

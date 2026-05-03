@@ -93,8 +93,7 @@
     // tiles
     setTile("t-calls", fmtNumber(s.Calls));
     setTile("t-cache", fmtPct(s.CacheHitRate));
-    document.getElementById("t-cache-foot").textContent =
-      "schema " + fmtPct(s.SchemaHitRate) + " · result " + fmtPct(s.ResultHitRate);
+    document.getElementById("t-cache-foot").textContent = "schema cache";
     setTile("t-errors", fmtPct(s.ErrorRate), s.ErrorRate > 0.05 ? "bad" : (s.ErrorRate > 0 ? "warn" : ""));
     setTile("t-avg", fmtMs(Math.round(s.AvgLatencyMS)));
     document.getElementById("t-avg-foot").textContent = "p95 " + fmtMs(s.P95LatencyMS);
@@ -255,8 +254,7 @@
     row.className = "tail-row";
     row.dataset.id = id;
     let badge = "";
-    if (r.result_cache_hit) badge = '<span class="badge cached">cached</span>';
-    else if (r.schema_cache_hit) badge = '<span class="badge warm">warm</span>';
+    if (r.schema_cache_hit) badge = '<span class="badge warm">warm</span>';
     row.innerHTML =
       '<span class="ts">' + fmtTime(r.ts) + "</span>" +
       '<span class="tool">' + escapeHtml(shortName(r.server, r.tool)) + "</span>" +
@@ -302,7 +300,6 @@
     cell("agent", r.agent || "—");
     cell("transport", (r.transport || "—") + (r.daemon ? " (daemon)" : ""));
     cell("schema cache", r.schema_cache_hit ? "hit" : "miss");
-    cell("result cache", r.result_cache_hit ? "hit" : "miss");
     cell("baseline tokens", fmtNumber(r.native_baseline_tokens || 0));
     cell("tokens saved", fmtNumber(r.tokens_saved || 0));
     if (r.policy_action) cell("policy", r.policy_action + (r.policy_name ? " (" + r.policy_name + ")" : ""));

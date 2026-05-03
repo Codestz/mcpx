@@ -277,9 +277,7 @@ func renderGainDashboard(s *stats.Summary, scope, dashURL string) {
 			dim.Printf("%s  ", tstamp)
 			fmt.Printf("%-36s  ", full)
 			latency := render.FormatDuration(r.LatencyMS)
-			if r.ResultCacheHit {
-				yellow.Printf("%6s  cached", latency)
-			} else if r.SchemaCacheHit {
+			if r.SchemaCacheHit {
 				yellow.Printf("%6s  warm  ", latency)
 			} else {
 				fmt.Printf("%6s        ", latency)
@@ -400,9 +398,7 @@ func renderHistory(s *stats.Summary, n int) {
 		yellow.Printf("%-36s", render.Truncate(r.Server+"."+r.Tool, 36))
 		latency := render.FormatDuration(r.LatencyMS)
 		fmt.Printf("  %6s", latency)
-		if r.ResultCacheHit {
-			yellow.Print("  cached")
-		} else if r.SchemaCacheHit {
+		if r.SchemaCacheHit {
 			yellow.Print("  warm")
 		}
 		if r.ExitCode != 0 {
@@ -444,9 +440,6 @@ func mineSuggestions(s *stats.Summary) []string {
 	if s.SchemaHitRate < 0.4 {
 		out = append(out, fmt.Sprintf("Schema cache hit rate %s — verify cache.schema_ttl is reasonable.",
 			render.FormatPercent(s.SchemaHitRate)))
-	}
-	if s.ResultHitRate == 0 && s.Calls >= 20 {
-		out = append(out, "No result cache hits — set cache.result_heuristic: true to enable get_/list_/find_ caching.")
 	}
 	if s.ErrorRate > 0.1 {
 		out = append(out, fmt.Sprintf("Error rate %s — top failing tools may need argument fixes.",

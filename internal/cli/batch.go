@@ -28,13 +28,12 @@ type BatchEntry struct {
 
 // BatchResult is one output line, emitted in the same order as inputs.
 type BatchResult struct {
-	ID        string         `json:"id"`
-	OK        bool           `json:"ok"`
-	LatencyMS int64          `json:"latency_ms"`
-	Cached    bool           `json:"cached,omitempty"`
+	ID        string          `json:"id"`
+	OK        bool            `json:"ok"`
+	LatencyMS int64           `json:"latency_ms"`
 	Result    *mcp.CallResult `json:"result,omitempty"`
-	Error     string         `json:"error,omitempty"`
-	ExitCode  int            `json:"exit_code,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	ExitCode  int             `json:"exit_code,omitempty"`
 }
 
 func batchCmd(opts *globalOpts) *cobra.Command {
@@ -43,7 +42,6 @@ func batchCmd(opts *globalOpts) *cobra.Command {
 		sequential    bool
 		maxConcurrent int
 		stopOnError   bool
-		useCache      bool
 	)
 
 	cmd := &cobra.Command{
@@ -53,7 +51,6 @@ func batchCmd(opts *globalOpts) *cobra.Command {
 and runs each call. Emits NDJSON to stdout in the same order as inputs.
 
 One MCP client per server is reused across the whole batch — no handshake-per-call.
-Result cache (when enabled) deduplicates identical calls inside the same batch.
 
 Examples:
   cat calls.jsonl | mcpx batch
@@ -78,7 +75,7 @@ Examples:
 				return err
 			}
 
-			results := executeBatch(cmd.Context(), entries, cfg, parallel, maxConcurrent, stopOnError, useCache)
+			results := executeBatch(cmd.Context(), entries, cfg, parallel, maxConcurrent, stopOnError)
 
 			enc := json.NewEncoder(os.Stdout)
 			for _, r := range results {
@@ -95,7 +92,6 @@ Examples:
 	cmd.Flags().BoolVar(&sequential, "sequential", false, "Run calls one at a time")
 	cmd.Flags().IntVar(&maxConcurrent, "max-concurrent", 0, "Max concurrent calls (0 = NumCPU)")
 	cmd.Flags().BoolVar(&stopOnError, "stop-on-error", false, "Abort the batch on first error")
-	cmd.Flags().BoolVar(&useCache, "cache", true, "Honor the result cache for idempotent tools")
 	return cmd
 }
 
@@ -130,7 +126,7 @@ func readBatch(r io.Reader) ([]BatchEntry, error) {
 // executeBatch runs entries against per-server clients. Per-server clients are
 // created lazily and closed at the end. Parallel mode bounds concurrency by
 // maxConcurrent. Returns results in the original input order.
-func executeBatch(ctx context.Context, entries []BatchEntry, cfg *config.Config, parallel bool, maxConcurrent int, stopOnError, useCache bool) []BatchResult {
+func executeBatch(ctx context.Context, entries []BatchEntry, cfg *config.Config, parallel bool, maxConcurrent int, stopOnError bool) []BatchResult {
 	results := make([]BatchResult, len(entries))
 	clients := newClientPool(cfg)
 	defer clients.closeAll()
@@ -139,7 +135,7 @@ func executeBatch(ctx context.Context, entries []BatchEntry, cfg *config.Config,
 
 	exec := func(j job) {
 		e := entries[j.idx]
-		results[j.idx] = runBatchEntry(ctx, e, clients, useCache)
+		results[j.idx] = runBatchEntry(ctx, e, clients)
 	}
 
 	if !parallel {
@@ -171,7 +167,7 @@ func executeBatch(ctx context.Context, entries []BatchEntry, cfg *config.Config,
 	return results
 }
 
-func runBatchEntry(ctx context.Context, e BatchEntry, pool *clientPool, useCache bool) BatchResult {
+func runBatchEntry(ctx context.Context, e BatchEntry, pool *clientPool) BatchResult {
 	start := time.Now()
 	res := BatchResult{ID: e.ID}
 
@@ -181,16 +177,15 @@ func runBatchEntry(ctx context.Context, e BatchEntry, pool *clientPool, useCache
 			preview, truncated = stats.TruncateForPreview(extractText(res.Result))
 		}
 		recordStats(stats.Record{
-			ID:        stats.NewID(),
-			Server:    e.Server,
-			Tool:      e.Tool,
-			Args:      e.Args,
-			ArgsBytes: jsonBytes(e.Args),
+			ID:              stats.NewID(),
+			Server:          e.Server,
+			Tool:            e.Tool,
+			Args:            e.Args,
+			ArgsBytes:       jsonBytes(e.Args),
 			ResponseBytes:   jsonBytes(res.Result),
 			ResultPreview:   preview,
 			ResultTruncated: truncated,
 			LatencyMS:       time.Since(start).Milliseconds(),
-			ResultCacheHit:  res.Cached,
 			ExitCode:        res.ExitCode,
 			Error:           res.Error,
 			Daemon:          pool.daemon(e.Server),
@@ -199,8 +194,7 @@ func runBatchEntry(ctx context.Context, e BatchEntry, pool *clientPool, useCache
 		})
 	}()
 
-	tool, err := pool.findTool(ctx, e.Server, e.Tool)
-	if err != nil {
+	if _, err := pool.findTool(ctx, e.Server, e.Tool); err != nil {
 		res.Error = err.Error()
 		res.ExitCode = exitToolNotFound
 		res.LatencyMS = time.Since(start).Milliseconds()
@@ -215,15 +209,8 @@ func runBatchEntry(ctx context.Context, e BatchEntry, pool *clientPool, useCache
 		return res
 	}
 
-	var result *mcp.CallResult
-	hit := false
-	if useCache {
-		result, hit, err = callToolCached(ctx, client, e.Server, tool, e.Args)
-	} else {
-		result, err = client.CallTool(ctx, e.Tool, e.Args)
-	}
+	result, err := client.CallTool(ctx, e.Tool, e.Args)
 	res.LatencyMS = time.Since(start).Milliseconds()
-	res.Cached = hit
 	if err != nil {
 		res.Error = err.Error()
 		res.ExitCode = exitToolError
@@ -236,7 +223,7 @@ func runBatchEntry(ctx context.Context, e BatchEntry, pool *clientPool, useCache
 
 // printBatchSummary writes an end-of-batch human summary to stderr.
 func printBatchSummary(results []BatchResult) {
-	ok, fail, cached := 0, 0, 0
+	ok, fail := 0, 0
 	var totalMS int64
 	for _, r := range results {
 		if r.OK {
@@ -244,12 +231,9 @@ func printBatchSummary(results []BatchResult) {
 		} else {
 			fail++
 		}
-		if r.Cached {
-			cached++
-		}
 		totalMS += r.LatencyMS
 	}
-	fmt.Fprintf(os.Stderr, "\nbatch: %d ok, %d fail, %d cached, total %dms (sum)\n", ok, fail, cached, totalMS)
+	fmt.Fprintf(os.Stderr, "\nbatch: %d ok, %d fail, total %dms (sum)\n", ok, fail, totalMS)
 }
 
 // clientPool manages one MCP client per server name across the batch lifetime.

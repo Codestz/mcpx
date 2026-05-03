@@ -534,7 +534,6 @@ button.ghost { color: var(--dim); }
   white-space: nowrap;
   text-transform: lowercase;
 }
-.tail-row .badge.cached { background: rgba(212, 161, 66, 0.16); color: var(--yellow); }
 .tail-row .badge.warm   { background: rgba(110, 168, 255, 0.16); color: var(--accent); }
 .tail-row .ok  { color: var(--green); text-align: center; font-weight: 600; }
 .tail-row .err { color: var(--red); text-align: center; font-weight: 600; }

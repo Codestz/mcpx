@@ -367,14 +367,13 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 
 	preCallEditGuard(serverName, toolName, toolArgs)
 
-	result, hit, err := callToolCached(callCtx, client, serverName, tool, toolArgs)
+	result, err := client.CallTool(callCtx, toolName, toolArgs)
 	if err != nil {
 		return err
 	}
 	rec.ResponseBytes = jsonBytes(result)
-	rec.ResultCacheHit = hit
 	if result != nil {
-		preview, truncated := stats.TruncateForPreview(string(extractText(result)))
+		preview, truncated := stats.TruncateForPreview(extractText(result))
 		rec.ResultPreview = preview
 		rec.ResultTruncated = truncated
 	}

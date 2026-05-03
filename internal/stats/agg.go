@@ -12,9 +12,8 @@ type Summary struct {
 	ArgsTokens       int64
 	ResponseTokens   int64
 	NativeBaseline   int64
-	CacheHitRate     float64 // (schema_hits + result_hits) / (2 * calls), 0..1
+	CacheHitRate     float64 // schema cache hits / calls, 0..1
 	SchemaHitRate    float64
-	ResultHitRate    float64
 	ErrorRate        float64
 	AvgLatencyMS     float64
 	P50LatencyMS     int64
@@ -76,7 +75,7 @@ func Aggregate(path string, f Filter, recentN int) (*Summary, error) {
 	servers := map[string]struct{}{}
 	agents := map[string]struct{}{}
 
-	var schemaHits, resultHits, errors int
+	var schemaHits, errors int
 	var latencies []int64
 	var latencySum int64
 	recent := newRing(recentN)
@@ -91,9 +90,6 @@ func Aggregate(path string, f Filter, recentN int) (*Summary, error) {
 		latencies = append(latencies, r.LatencyMS)
 		if r.SchemaCacheHit {
 			schemaHits++
-		}
-		if r.ResultCacheHit {
-			resultHits++
 		}
 		if r.ExitCode != 0 {
 			errors++
@@ -157,8 +153,7 @@ func Aggregate(path string, f Filter, recentN int) (*Summary, error) {
 	if s.Calls > 0 {
 		s.AvgLatencyMS = float64(latencySum) / float64(s.Calls)
 		s.SchemaHitRate = float64(schemaHits) / float64(s.Calls)
-		s.ResultHitRate = float64(resultHits) / float64(s.Calls)
-		s.CacheHitRate = (s.SchemaHitRate + s.ResultHitRate) / 2
+		s.CacheHitRate = s.SchemaHitRate
 		s.ErrorRate = float64(errors) / float64(s.Calls)
 		s.P50LatencyMS = percentile(latencies, 0.5)
 		s.P95LatencyMS = percentile(latencies, 0.95)

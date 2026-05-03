@@ -109,13 +109,16 @@ type GainConfig struct {
 	StatsPath   string `yaml:"stats_path"`    // override default ~/.mcpx/stats.jsonl
 }
 
-// CacheConfig controls schema and result caches.
+// CacheConfig controls the schema cache (tools/list, prompts/list, resources/list).
+//
+// mcpx deliberately ships without a result cache: caching tool RESPONSES is a
+// correctness footgun (stale data after edits, mutations, or external state
+// changes) that we couldn't make correct without server cooperation
+// (`readOnlyHint`). The schema cache is correctness-safe — schemas change
+// only on server upgrades and the worst case is missing a freshly-added tool
+// for one TTL window.
 type CacheConfig struct {
-	SchemaTTL          string   `yaml:"schema_ttl"`            // duration, e.g. "5m"
-	ResultTTL          string   `yaml:"result_ttl"`            // duration, e.g. "30s"
-	ResultEnabled      *bool    `yaml:"result_enabled"`
-	ResultHeuristic    bool     `yaml:"result_heuristic"`      // opt-in get_/list_/find_/...
-	ResultIdempotent   []string `yaml:"result_idempotent_tools"` // "server.tool" entries
+	SchemaTTL string `yaml:"schema_ttl"` // duration, e.g. "5m"
 }
 
 // UIConfig controls the always-on dashboard.
@@ -151,21 +154,9 @@ func (g *GainConfig) Default() GainConfig {
 
 // Default returns the CacheConfig with defaults applied.
 func (c *CacheConfig) Default() CacheConfig {
-	out := CacheConfig{SchemaTTL: "5m", ResultTTL: "30s"}
-	if c != nil {
-		if c.SchemaTTL != "" {
-			out.SchemaTTL = c.SchemaTTL
-		}
-		if c.ResultTTL != "" {
-			out.ResultTTL = c.ResultTTL
-		}
-		out.ResultEnabled = c.ResultEnabled
-		out.ResultHeuristic = c.ResultHeuristic
-		out.ResultIdempotent = c.ResultIdempotent
-	}
-	if out.ResultEnabled == nil {
-		t := true
-		out.ResultEnabled = &t
+	out := CacheConfig{SchemaTTL: "5m"}
+	if c != nil && c.SchemaTTL != "" {
+		out.SchemaTTL = c.SchemaTTL
 	}
 	return out
 }

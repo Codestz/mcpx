@@ -36,7 +36,6 @@ type Record struct {
 	Transport           string         `json:"transport,omitempty"`
 	Daemon              bool           `json:"daemon,omitempty"`
 	SchemaCacheHit      bool           `json:"schema_cache_hit,omitempty"`
-	ResultCacheHit      bool           `json:"result_cache_hit,omitempty"`
 	ExitCode            int            `json:"exit_code"`
 	Error               string         `json:"error,omitempty"`
 	PolicyAction        string         `json:"policy_action,omitempty"`

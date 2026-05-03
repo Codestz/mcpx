@@ -84,7 +84,7 @@ func TestAggregate(t *testing.T) {
 	now := time.Now().UTC()
 
 	w.Write(Record{TS: now, Server: "s", Tool: "find_symbol", LatencyMS: 10, TokensSaved: 100, ArgsTokensEst: 5, ResponseTokensEst: 50, SchemaCacheHit: true})
-	w.Write(Record{TS: now, Server: "s", Tool: "find_symbol", LatencyMS: 20, TokensSaved: 200, ArgsTokensEst: 5, ResponseTokensEst: 60, SchemaCacheHit: true, ResultCacheHit: true})
+	w.Write(Record{TS: now, Server: "s", Tool: "find_symbol", LatencyMS: 20, TokensSaved: 200, ArgsTokensEst: 5, ResponseTokensEst: 60, SchemaCacheHit: true})
 	w.Write(Record{TS: now, Server: "s", Tool: "search", LatencyMS: 100, TokensSaved: 50, ArgsTokensEst: 5, ResponseTokensEst: 200, ExitCode: 1})
 	w.Close()
 

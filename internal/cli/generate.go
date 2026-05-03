@@ -259,18 +259,4 @@ func firstSentence(s string) string {
 	return s
 }
 
-// compactDesc shortens a description for table display.
-func compactDesc(s string) string {
-	// Remove newlines.
-	s = strings.ReplaceAll(s, "\n", " ")
-	// Collapse spaces.
-	for strings.Contains(s, "  ") {
-		s = strings.ReplaceAll(s, "  ", " ")
-	}
-	s = strings.TrimSpace(s)
-	if len(s) > 80 {
-		s = s[:77] + "..."
-	}
-	return s
-}
 
