@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -108,13 +107,14 @@ func uiManageCmd() *cobra.Command {
 }
 
 // startUIIfEnabled spawns the dashboard daemon according to config + env.
-// Prints a one-line URL hint to stderr at most once per shell session.
 //
-// Suppressed when:
-//   - stderr is not a terminal (pipelines)
-//   - the invoked command's primary output is data the user wants to read
-//     (find / gain / batch / doctor / version / --json globally)
-//   - a per-session marker file at ~/.mcpx/.notice-<PPID> exists.
+// The dashboard runs silently — its URL is surfaced only when the user asks:
+//   - `mcpx gain`        prints the URL in its footer when the daemon is up
+//   - `mcpx ui status`   prints the URL or "inactive"
+//   - `mcpx ui open`     prints the URL alone (use with `open $(...)`)
+//
+// No CLI invocation prints the banner unsolicited. Opt out of spawning entirely
+// with `MCPX_UI=off` or `ui.enabled: false` in config.
 func startUIIfEnabled(cfg *config.Config) {
 	uiCfg := (*config.UIConfig)(nil).Default()
 	if cfg != nil && cfg.UI != nil {
@@ -122,85 +122,5 @@ func startUIIfEnabled(cfg *config.Config) {
 	}
 	enabled := uiCfg.Enabled != nil && *uiCfg.Enabled
 	ui.EnsureRunningAsync(enabled, uiCfg.Port, uiCfg.Bind)
-
-	if !enabled {
-		return
-	}
-	if !isStderrTerminal() || noticeAlreadyShown() || isQuietCommand() {
-		return
-	}
-	go func() {
-		deadline := time.Now().Add(2 * time.Second)
-		for time.Now().Before(deadline) {
-			h, err := ui.LoadHandshake()
-			if err == nil && h.Port > 0 {
-				fmt.Fprintf(os.Stderr, "mcpx dashboard: http://%s:%d/?t=%s\n", h.Bind, h.Port, h.Token)
-				markNoticeShown()
-				return
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-	}()
 }
 
-// isQuietCommand reports whether the dashboard URL banner should be
-// suppressed for the current invocation. Rule: banner fires ONLY on actual
-// tool calls (`mcpx <server> <tool>`), never on built-in commands or
-// `--json` invocations whose stdout is the user-facing data.
-//
-// Built-in mcpx commands are listed explicitly so any new top-level command
-// must be added here to opt into banner suppression — the safer default.
-func isQuietCommand() bool {
-	if len(os.Args) < 2 {
-		return false
-	}
-	builtins := map[string]bool{
-		"find": true, "list": true, "gain": true, "batch": true,
-		"doctor": true, "ui": true, "ping": true, "init": true,
-		"configure": true, "secret": true, "daemon": true,
-		"prompt": true, "resource": true, "version": true,
-		"completion": true, "help": true, "--help": true, "-h": true,
-	}
-	if builtins[os.Args[1]] {
-		return true
-	}
-	for _, a := range os.Args {
-		if a == "--json" {
-			return true
-		}
-	}
-	return false
-}
-
-// noticeAlreadyShown returns true if a marker file exists for this shell session
-// (keyed by parent PID so a fresh terminal still gets the notice).
-func noticeAlreadyShown() bool {
-	path := noticeMarkerPath()
-	if path == "" {
-		return false
-	}
-	if _, err := os.Stat(path); err == nil {
-		return true
-	}
-	return false
-}
-
-func markNoticeShown() {
-	path := noticeMarkerPath()
-	if path == "" {
-		return
-	}
-	_ = os.MkdirAll(strings.TrimSuffix(path, "/"+strings.Split(path, "/")[len(strings.Split(path, "/"))-1]), 0o755)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600)
-	if err == nil {
-		f.Close()
-	}
-}
-
-func noticeMarkerPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return fmt.Sprintf("%s/.mcpx/.notice-%d", home, os.Getppid())
-}
