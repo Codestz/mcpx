@@ -46,9 +46,10 @@ type Tool struct {
 
 // InputSchema describes the JSON Schema for a tool's input.
 type InputSchema struct {
-	Type       string                    `json:"type"`
-	Properties map[string]PropertySchema `json:"properties"`
-	Required   []string                  `json:"required"`
+	Type       string                     `json:"type"`
+	Properties map[string]PropertySchema  `json:"properties"`
+	Required   []string                   `json:"required"`
+	Ext        map[string]json.RawMessage `json:"-"`
 }
 
 // PropertySchema describes a single property in a tool's input schema.
@@ -58,6 +59,15 @@ type PropertySchema struct {
 	Default     any             `json:"default,omitempty"`
 	Enum        []any           `json:"enum,omitempty"`
 	Items       *PropertySchema `json:"items,omitempty"`
+
+	// Nullable is true when the source schema specified ["T", "null"] or had a
+	// "null" branch in oneOf/anyOf. Allows tools to know a value may legitimately
+	// be missing or null.
+	Nullable bool `json:"nullable,omitempty"`
+
+	// Ext preserves JSON Schema keywords mcpx does not natively model
+	// (oneOf, anyOf, allOf, $ref, format, pattern, etc). Round-trippable.
+	Ext map[string]json.RawMessage `json:"-"`
 }
 
 // Prompt describes an MCP prompt exposed by a server.

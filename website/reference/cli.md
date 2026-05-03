@@ -60,12 +60,38 @@ Override the default call timeout for a single invocation. Uses Go duration form
 mcpx serena search_for_pattern --substring_pattern "TODO" --timeout 60s
 ```
 
-### `mcpx <server> --help`
+### `mcpx <server> <tool> --example`
 
-Show all tools available on a server. If the server supports prompts or resources, they are listed too.
+Print a JSON skeleton for the tool's arguments based on the normalized schema. Required fields get placeholder values; optional fields use schema defaults or enum head.
 
 ```bash
-mcpx serena --help
+mcpx serena find_symbol --example
+# {
+#   "name_path_pattern": "<string>",
+#   "depth": 0,
+#   "include_body": false,
+#   ...
+# }
+```
+
+Pair with `--json` for piping into other tools.
+
+### `mcpx <server> <tool> --validate-args`
+
+Type-check arguments without invoking the tool. Reports missing required fields, wrong types, and enum mismatches. Exits `0` on success, `1` on issues.
+
+```bash
+mcpx serena find_symbol --name_path_pattern Auth --validate-args
+# ok
+```
+
+### `mcpx <server> --help`
+
+List tools for a server. Default is one line per tool with required flags surfaced — designed to fit a server with 20+ tools in ~30 lines.
+
+```bash
+mcpx serena --help            # compact (default)
+mcpx serena --help --full     # verbose with descriptions
 ```
 
 ---
@@ -192,6 +218,112 @@ mcpx ping serena --json
 
 Exit code 3 on failure.
 
+### `mcpx find <query>`
+
+BM25-ranked tool search across every configured server. Use this when you don't know which tool you need — returns the top candidates in ~80 tokens instead of 5–15K from `list -v`.
+
+```bash
+mcpx find "search code by regex"
+# query  "search code by regex"
+# found  4 result(s) across 1 server(s)
+#
+#   serena.search_for_pattern   1.00  Offers a flexible search for arbitrary patterns...
+#   serena.find_symbol          0.34  Retrieves info on symbols/code entities...
+#   ...
+
+mcpx find "github issue" --top 3 --json
+mcpx find "..." --server serena   # restrict to one server
+```
+
+Indexed from the schema cache; first run per server populates the cache.
+
+---
+
+## Batching
+
+### `mcpx batch`
+
+Run many tool calls in parallel from NDJSON on stdin. One mcpx process, one MCP client per server reused across the entire batch — no handshake-per-call overhead.
+
+```bash
+printf '%s\n%s\n' \
+  '{"id":"a","server":"serena","tool":"find_symbol","args":{"name_path_pattern":"Auth"}}' \
+  '{"id":"b","server":"serena","tool":"find_symbol","args":{"name_path_pattern":"Token"}}' | mcpx batch
+```
+
+Output is NDJSON in input order with `id`, `ok`, `latency_ms`, `cached`, `result` or `error`.
+
+Flags:
+- `--parallel` (default) / `--sequential`
+- `--max-concurrent N` (default = NumCPU)
+- `--stop-on-error` — abort on first failure
+- `--cache=false` — bypass result cache
+
+The result cache deduplicates identical calls within the batch when enabled.
+
+---
+
+## Observability
+
+### `mcpx gain`
+
+Premium terminal dashboard for token-savings analytics. Reads `~/.mcpx/stats.jsonl` (every call writes one line transparently).
+
+```bash
+mcpx gain                        # current project, last 7 days
+mcpx gain --all                  # every project
+mcpx gain --since 24h            # narrow window
+mcpx gain --by tool              # ranked tool table
+mcpx gain --by server            # ranked server table
+mcpx gain --by day               # daily breakdown
+mcpx gain --history 20           # last N calls
+mcpx gain --suggest              # mined recommendations
+mcpx gain --watch                # live refresh
+mcpx gain --json                 # machine-readable
+```
+
+The dashboard shows the hero "tokens saved" metric, sparkline, top tools by calls, top tools by savings, and the most recent calls with their latency + cache state.
+
+### `mcpx ui`
+
+Always-on web dashboard daemon. Auto-spawned on the first tool call (token-protected, 127.0.0.1 only, idle-shutdown after 1h). The URL is printed once per shell session.
+
+```bash
+mcpx ui status                   # show URL or "inactive"
+mcpx ui open                     # print URL (use with `open $(mcpx ui open)`)
+mcpx ui stop                     # stop the daemon
+mcpx ui disable                  # how to disable permanently
+```
+
+Opt out via `MCPX_UI=off` env var or `ui.enabled: false` in config.
+
+---
+
+## Diagnostics
+
+### `mcpx doctor`
+
+Run a series of checks against config and connectivity: YAML validity, command paths, secret resolution, daemon liveness, MCP `initialize` handshake, `tools/list` reachability.
+
+```bash
+mcpx doctor
+#   mcpx doctor
+#   ─────────────────────────────────────
+#     [ok]   config         loaded 1 server(s), project = /path
+#
+#   serena
+#     [ok]   command        /path/to/serena
+#     [ok]   daemon         running, socket reachable
+#     [ok]   initialize     FastMCP 1.23.0
+#     [ok]   tools/list     21 tool(s)
+#
+#   all checks passed
+
+mcpx doctor --json               # machine-readable
+```
+
+Exits `0` on all-ok, `2` on any failure.
+
 ---
 
 ## Configuration
@@ -206,16 +338,19 @@ mcpx init
 
 ### `mcpx configure`
 
-Auto-generate tool documentation for CLAUDE.md from MCP server schemas. Scans configured servers and writes per-server reference files.
+Generate the agent-facing reference docs that teach Claude Code (and any mcpx-aware coding agent) how to use the configured MCP servers. Idempotent — re-run after adding/removing servers.
+
+Writes:
+- `.claude/MCPX.md` — composition primitives, discovery, exit codes
+- `.claude/<SERVER>.md` — per-server tool selector table + compact reference
+- `.claude/CLAUDE.md` — adds `@MCPX.md` and `@<SERVER>.md` references so the agent loads them automatically
 
 ```bash
-mcpx configure
-# Scanning MCP servers...
-#   → serena: 21 tools found
-# Generating documentation...
-#   ✓ SERENA.md written (21 tools)
-#   ✓ MCPX.md updated
+mcpx configure                   # project (.claude/)
+mcpx configure --global          # user-level (~/.claude/)
 ```
+
+The format is now agent-optimized by default: tabular, decision-oriented, no human-ops content (caching internals, observability, dashboard live in the CLI commands above when a human needs them).
 
 ---
 

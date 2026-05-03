@@ -180,6 +180,92 @@ type serverInfo struct {
 }
 
 
+// printServerHelpCompact is the default help view: one line per tool, name +
+// required-flag summary, no descriptions. Built for AI-agent discovery — keeps
+// the entire help under a few hundred tokens for servers with many tools.
+//
+// Use --full to get the verbose layout (printServerHelpFull).
+func (o *output) printServerHelpCompact(serverName string, sc *config.ServerConfig, tools []mcp.Tool, prompts []mcp.Prompt, resources []mcp.Resource) error {
+	if o.mode == outputJSON {
+		return o.printJSON(map[string]any{
+			"tools": tools, "prompts": prompts, "resources": resources,
+		})
+	}
+
+	bold := color.New(color.Bold)
+	dim := color.New(color.FgHiBlack)
+	yellow := color.New(color.FgYellow)
+
+	bold.Fprintf(o.stdout, "%s", serverName)
+	dim.Fprintf(o.stdout, "  %d tool", len(tools))
+	if len(tools) != 1 {
+		dim.Fprint(o.stdout, "s")
+	}
+	if len(prompts) > 0 {
+		dim.Fprintf(o.stdout, ", %d prompt", len(prompts))
+		if len(prompts) != 1 {
+			dim.Fprint(o.stdout, "s")
+		}
+	}
+	if len(resources) > 0 {
+		dim.Fprintf(o.stdout, ", %d resource", len(resources))
+		if len(resources) != 1 {
+			dim.Fprint(o.stdout, "s")
+		}
+	}
+	fmt.Fprintln(o.stdout)
+	dim.Fprintln(o.stdout, "—")
+
+	maxName := 0
+	for _, t := range tools {
+		if len(t.Name) > maxName {
+			maxName = len(t.Name)
+		}
+	}
+	if maxName > 36 {
+		maxName = 36
+	}
+
+	for _, t := range tools {
+		name := t.Name
+		if len(name) > maxName {
+			name = name[:maxName-1] + "…"
+		}
+		bold.Fprintf(o.stdout, "  %-*s", maxName, name)
+		req := requiredFlagSummary(&t)
+		if req != "" {
+			yellow.Fprintf(o.stdout, "  %s", req)
+		}
+		fmt.Fprintln(o.stdout)
+	}
+
+	if len(prompts) > 0 {
+		dim.Fprintln(o.stdout, "—")
+		for _, p := range prompts {
+			bold.Fprintf(o.stdout, "  prompt %-*s", maxName-7, p.Name)
+			fmt.Fprintln(o.stdout)
+		}
+	}
+
+	fmt.Fprintln(o.stdout)
+	dim.Fprintf(o.stdout, "→ mcpx %s <tool> --help     — flags + descriptions for one tool\n", serverName)
+	dim.Fprintf(o.stdout, "→ mcpx %s --help --full     — full descriptions for all tools\n", serverName)
+	dim.Fprintf(o.stdout, "→ mcpx find <query>         — rank tools across all servers\n")
+	return nil
+}
+
+// requiredFlagSummary returns "--a --b" for a tool's required flags, "" if none.
+func requiredFlagSummary(t *mcp.Tool) string {
+	if len(t.InputSchema.Required) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(t.InputSchema.Required))
+	for _, r := range t.InputSchema.Required {
+		parts = append(parts, "--"+r)
+	}
+	return strings.Join(parts, " ")
+}
+
 // printServerHelpFull displays a dynamic help page showing tools, prompts, and resources.
 func (o *output) printServerHelpFull(serverName string, sc *config.ServerConfig, tools []mcp.Tool, prompts []mcp.Prompt, resources []mcp.Resource) error {
 	if o.mode == outputJSON {

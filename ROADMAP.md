@@ -2,7 +2,29 @@
 
 > What's next for mcpx — focused on impact, not infrastructure.
 
-mcpx v1.5.0 transforms mcpx from a CLI proxy into a secure gateway for MCP servers. Security policies, audit logging, and scoped daemons make mcpx ready for teams.
+mcpx v1.6.0 ("Agentic Supremacy") makes the proxy measurable, observable, and intelligent: every call is recorded, every schema is cached, every tool is one `mcpx find` away, and an always-on dashboard makes ROI visible.
+
+---
+
+## v1.6 — Agentic Supremacy ✅ (shipped 2026-05-03)
+
+**Theme:** Make AI agents faster, cheaper, more accurate.
+
+### Shipped
+
+- **`mcpx find <query>`** — BM25-ranked tool discovery across all servers (~80 tokens vs 5–15K for `list -v`).
+- **`mcpx batch`** — NDJSON in/out, parallel execution, single client per server reused.
+- **`mcpx gain`** — premium terminal dashboard for tokens-saved analytics; subcommands for slicing by tool/server/day.
+- **Always-on web dashboard** — auto-spawned, token-protected, single-page UI with live tail and click-to-inspect drawer.
+- **`mcpx doctor`** — config + connectivity diagnostics.
+- **Schema cache + result cache** — `tools/list` cached with TTL; idempotent reads (`get_*`/`list_*`/`find_*`/`search_*`/`read_*`) deduplicate.
+- **Tool argument helpers** — `--example` for JSON skeleton, `--validate-args` for type-check without invoking, default-compact help (`--full` for verbose).
+- **Schema normalizer** — handles JSON Schema union types, `oneOf`/`anyOf`/`allOf`, `$ref`. Fixes #14 (Sentry MCP server initialization).
+- **Edit-tool guards** — pre-call warning + post-call Go parse check for `replace_symbol_body` and friends across 9 languages.
+- **Typo remediation** — Levenshtein-2 "did you mean…" suggestions on tool/flag errors.
+- **Structured exit codes** — `0` ok · `1` tool error · `2` config · `3` connection · `4` timeout · `5` policy denied · `6` tool not found.
+- **JSONL stats** at `~/.mcpx/stats.jsonl` — every call recorded for `gain`, the dashboard, and audit.
+- **Configure rewrite** — agent-grounded `MCPX.md` + per-server `<SERVER>.md` with tool-selector tables.
 
 ---
 

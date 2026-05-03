@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-05-03
+
+The "Agentic Supremacy" release. mcpx becomes a measurable, observable, and intelligent control plane: every call is recorded, every schema is cached, every server is one `mcpx find` away, and an always-on dashboard makes ROI visible.
+
+### Added — Foundation
+
+- **JSONL stats** (`internal/stats/`) — every tool call writes one line to `~/.mcpx/stats.jsonl`: timestamp, args, latency, cache hits, exit code, tokens saved vs native MCP loading. Async writer; never blocks the caller.
+- **Schema cache** (`internal/schemacache/`) — `tools/list` (and prompts/resources) cached at `~/.mcpx/cache/schemas/<key>.json` with TTL. First call per server is slow; everything after is instant. Computes `native_baseline_tokens` once at populate time so the stats writer can quote real savings.
+- **Result cache: deliberately not shipped.** Caching tool RESPONSES is a correctness footgun — recursive searches, multi-file reads, network-backed tools, and any non-filesystem state can all return stale data inside a TTL. mcpx is the trustworthy intermediary; we'd rather make the round-trip than risk acting on stale snapshots. If a future MCP server adopts `readOnlyHint: true` annotations widely, server-driven result caching becomes safe to add back.
+- **Schema normalizer** — handles JSON Schema union types (`type: ["string","null"]`), `oneOf`/`anyOf`/`allOf`, `$ref`; unknown keywords preserved in `Ext`. Fixes #14 (Sentry MCP server initialization).
+
+### Added — Agent superpowers
+
+- **`mcpx find <query>`** — BM25-ranked tool search across every configured server. ~80 tokens for top candidates instead of 5–15K tokens for `mcpx list -v`.
+- **`mcpx batch`** — NDJSON in/out, parallel by default, single client per server reused across the entire batch.
+- **`mcpx <server> <tool> --example`** — JSON skeleton with placeholder values from the normalized schema.
+- **`mcpx <server> <tool> --validate-args ...`** — type/required check without invoking the tool.
+- **Default-compact help** — `mcpx <server> --help` is one line per tool with required flags surfaced. Add `--full` for descriptions.
+- **Typo remediation** — Levenshtein-2 "did you mean…" suggestions on tool-not-found and unknown-flag errors.
+- **Pre/post edit guards** — `replace_symbol_body` calls are warned when the body starts with a duplicate declaration keyword (Go, Python, TS, JS, Rust, Ruby, Java, Kotlin, Swift). For `.go` files the modified file is re-parsed and `file:line:col` is surfaced when the edit broke syntax.
+
+### Added — Operator surfaces
+
+- **`mcpx gain`** — premium terminal dashboard: hero metric (tokens saved), 7-day sparkline, top-tools bars, top-savers, server health, recent calls. Subcommands: `--by tool|server|day`, `--history N`, `--suggest`, `--watch`, `--all`, `--project`, `--since`, `--json`.
+- **Always-on web dashboard** — auto-spawned on first call. Token-protected, 127.0.0.1-only, idle-shutdown after 1h, opt-out via `MCPX_UI=off` or `ui.enabled: false`. Single-page UI: project sidebar, time range tabs (1h/24h/7d/30d/all), token efficiency bar, top tools, server health, click-to-inspect drawer, SSE live tail, regex filter (`/`).
+- **`mcpx ui status|stop|open|disable`** — dashboard daemon controls.
+- **`mcpx doctor`** — config + command path + secret resolution + daemon liveness + initialize + tools/list checks. `--json` for machine-readable output.
+
+### Changed
+
+- **Structured exit codes** — `0` ok · `1` tool error · `2` config · `3` connection · `4` timeout · `5` policy denied · `6` tool not found.
+- **`mcpx version`** warns loudly on `+dirty` builds (so leaked debug code from local builds doesn't silently propagate).
+- **`mcpx configure`** rewritten — generates an agent-grounded `MCPX.md` (composition + discover + exit codes) and per-server `<SERVER>.md` files (tool-selector table + compact reference). The `--format compact` flag is now hidden; output is agent-optimized by default. Edit-tool safety guidance only emitted for servers that expose body-mutation tools.
+- Client version bumped to `1.6.0` in the MCP handshake.
+
+### New packages
+
+- `internal/stats/` — JSONL writer (async, drop-on-overflow), reader, aggregator (top-K, p95, daily buckets, hit rates).
+- `internal/schemacache/` — schema cache, result cache, idempotence detection.
+- `internal/find/` — BM25 ranker (snake/camel splitting, name-coverage bonus, plural stem).
+- `internal/render/` — terminal primitives (Box, Bar, Sparkline, FormatNumber/Duration/Percent, term width).
+- `internal/ui/` — dashboard daemon (lazy supervisor, HTTP, SSE, embedded HTML/CSS/JS).
+
+### Config additions
+
+```yaml
+gain:
+  enabled: true
+  tokenizer: estimate     # bytes ÷ 4; honest approximation of Claude tokenization
+  retain_days: 30
+  stats_path: ""          # default: ~/.mcpx/stats.jsonl
+
+cache:
+  schema_ttl: 5m          # only the schema cache is shipped — see notes above
+
+ui:
+  enabled: true
+  port: 7878              # 0 = ephemeral
+  bind: 127.0.0.1
+  idle_timeout: 1h
+```
+
+Environment overrides: `MCPX_AGENT`, `MCPX_CACHE`, `MCPX_UI`, `MCPX_VERBOSE`.
+
 ## [1.5.0] - 2026-03-30
 
 ### Added

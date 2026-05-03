@@ -12,6 +12,9 @@ import (
 type Config struct {
 	Servers  map[string]*ServerConfig `yaml:"servers"`
 	Security *SecurityConfig          `yaml:"security"`
+	Gain     *GainConfig              `yaml:"gain"`
+	Cache    *CacheConfig             `yaml:"cache"`
+	UI       *UIConfig                `yaml:"ui"`
 }
 
 // ServerConfig describes a single MCP server.
@@ -96,6 +99,90 @@ type ServerSecurity struct {
 	AllowedTools []string `yaml:"allowed_tools"`
 	BlockedTools []string `yaml:"blocked_tools"`
 	Policies     []Policy `yaml:"policies"`
+}
+
+// GainConfig controls token-savings analytics and JSONL stats.
+type GainConfig struct {
+	Enabled     *bool  `yaml:"enabled"`
+	Tokenizer   string `yaml:"tokenizer"`     // "estimate" (default) | "tiktoken"
+	RetainDays  int    `yaml:"retain_days"`   // 0 = no retention pruning
+	StatsPath   string `yaml:"stats_path"`    // override default ~/.mcpx/stats.jsonl
+}
+
+// CacheConfig controls the schema cache (tools/list, prompts/list, resources/list).
+//
+// mcpx deliberately ships without a result cache: caching tool RESPONSES is a
+// correctness footgun (stale data after edits, mutations, or external state
+// changes) that we couldn't make correct without server cooperation
+// (`readOnlyHint`). The schema cache is correctness-safe — schemas change
+// only on server upgrades and the worst case is missing a freshly-added tool
+// for one TTL window.
+type CacheConfig struct {
+	SchemaTTL string `yaml:"schema_ttl"` // duration, e.g. "5m"
+}
+
+// UIConfig controls the always-on dashboard.
+type UIConfig struct {
+	Enabled     *bool  `yaml:"enabled"`
+	Port        int    `yaml:"port"`         // 0 = ephemeral
+	Bind        string `yaml:"bind"`         // default "127.0.0.1"
+	IdleTimeout string `yaml:"idle_timeout"` // duration, default "1h"
+}
+
+
+// Default returns the GainConfig with defaults applied.
+func (g *GainConfig) Default() GainConfig {
+	out := GainConfig{Tokenizer: "estimate", RetainDays: 30}
+	if g != nil {
+		if g.Enabled != nil {
+			out.Enabled = g.Enabled
+		}
+		if g.Tokenizer != "" {
+			out.Tokenizer = g.Tokenizer
+		}
+		if g.RetainDays != 0 {
+			out.RetainDays = g.RetainDays
+		}
+		out.StatsPath = g.StatsPath
+	}
+	if out.Enabled == nil {
+		t := true
+		out.Enabled = &t
+	}
+	return out
+}
+
+// Default returns the CacheConfig with defaults applied.
+func (c *CacheConfig) Default() CacheConfig {
+	out := CacheConfig{SchemaTTL: "5m"}
+	if c != nil && c.SchemaTTL != "" {
+		out.SchemaTTL = c.SchemaTTL
+	}
+	return out
+}
+
+// Default returns the UIConfig with defaults applied.
+func (u *UIConfig) Default() UIConfig {
+	out := UIConfig{Port: 7878, Bind: "127.0.0.1", IdleTimeout: "1h"}
+	if u != nil {
+		if u.Enabled != nil {
+			out.Enabled = u.Enabled
+		}
+		if u.Port != 0 {
+			out.Port = u.Port
+		}
+		if u.Bind != "" {
+			out.Bind = u.Bind
+		}
+		if u.IdleTimeout != "" {
+			out.IdleTimeout = u.IdleTimeout
+		}
+	}
+	if out.Enabled == nil {
+		t := true
+		out.Enabled = &t
+	}
+	return out
 }
 
 // Load reads the global (~/.mcpx/config.yml) and project (.mcpx/config.yml)
@@ -199,6 +286,20 @@ func Merge(global, project *Config) *Config {
 	merged.Security = global.Security
 	if project.Security != nil {
 		merged.Security = project.Security
+	}
+
+	// Gain/Cache/UI: project overrides global at the section level.
+	merged.Gain = global.Gain
+	if project.Gain != nil {
+		merged.Gain = project.Gain
+	}
+	merged.Cache = global.Cache
+	if project.Cache != nil {
+		merged.Cache = project.Cache
+	}
+	merged.UI = global.UI
+	if project.UI != nil {
+		merged.UI = project.UI
 	}
 
 	return merged
