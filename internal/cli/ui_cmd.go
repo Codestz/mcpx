@@ -143,15 +143,25 @@ func startUIIfEnabled(cfg *config.Config) {
 	}()
 }
 
-// isQuietCommand reports whether the invoked subcommand is one whose primary
-// output is structured data — adding a stderr URL banner would visually
-// interfere with copy-paste or human reading of the output.
+// isQuietCommand reports whether the dashboard URL banner should be
+// suppressed for the current invocation. Rule: banner fires ONLY on actual
+// tool calls (`mcpx <server> <tool>`), never on built-in commands or
+// `--json` invocations whose stdout is the user-facing data.
+//
+// Built-in mcpx commands are listed explicitly so any new top-level command
+// must be added here to opt into banner suppression — the safer default.
 func isQuietCommand() bool {
 	if len(os.Args) < 2 {
 		return false
 	}
-	switch os.Args[1] {
-	case "find", "gain", "batch", "doctor", "version", "completion", "ui":
+	builtins := map[string]bool{
+		"find": true, "list": true, "gain": true, "batch": true,
+		"doctor": true, "ui": true, "ping": true, "init": true,
+		"configure": true, "secret": true, "daemon": true,
+		"prompt": true, "resource": true, "version": true,
+		"completion": true, "help": true, "--help": true, "-h": true,
+	}
+	if builtins[os.Args[1]] {
 		return true
 	}
 	for _, a := range os.Args {
