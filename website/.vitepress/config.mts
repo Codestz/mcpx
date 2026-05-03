@@ -20,7 +20,7 @@ export default defineConfig({
       { text: 'Reference', link: '/reference/cli' },
       { text: 'Integrations', link: '/integrations/serena' },
       {
-        text: 'v1.5.0',
+        text: 'v1.6.0',
         items: [
           { text: 'Changelog', link: '/about/changelog' },
           { text: 'GitHub', link: 'https://github.com/codestz/mcpx' },

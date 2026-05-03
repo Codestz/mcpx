@@ -17,6 +17,7 @@ import (
 	"github.com/codestz/mcpx/internal/resolver"
 	"github.com/codestz/mcpx/internal/secret"
 	"github.com/codestz/mcpx/internal/security"
+	"github.com/codestz/mcpx/internal/stats"
 	"github.com/spf13/cobra"
 )
 
@@ -53,6 +54,8 @@ func buildServerCommand(name string, sc *config.ServerConfig, globalSec *config.
 						i++
 						opts.timeout = args[i]
 					}
+				case "--full":
+					opts.full = true
 				case "--help", "-h":
 					hasHelp = true
 				default:
@@ -165,16 +168,54 @@ func showServerHelp(ctx context.Context, serverName string, sc *config.ServerCon
 		resources, _ = client.ListResources(ctx)
 	}
 
-	return out.printServerHelpFull(serverName, sc, tools, prompts, resources)
+	if opts.full {
+		return out.printServerHelpFull(serverName, sc, tools, prompts, resources)
+	}
+	return out.printServerHelpCompact(serverName, sc, tools, prompts, resources)
 }
 
 // runTool connects to a server, finds the named tool, parses flags, and executes.
-func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, globalSec *config.SecurityConfig, toolName string, rawArgs []string, opts *globalOpts) error {
+func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, globalSec *config.SecurityConfig, toolName string, rawArgs []string, opts *globalOpts) (retErr error) {
 	out := newOutput(opts.outputMode())
 
-	// Check for help or stdin mode.
+	projectRoot, _ := findProjectRoot()
+	rec := stats.Record{
+		ID:        stats.NewID(),
+		TS:        time.Now().UTC(),
+		Project:   projectRoot,
+		Server:    serverName,
+		Tool:      toolName,
+		Transport: sc.Transport,
+		Daemon:    sc.Daemon,
+	}
+	start := time.Now()
+	defer func() {
+		rec.LatencyMS = time.Since(start).Milliseconds()
+		if retErr != nil {
+			rec.Error = retErr.Error()
+			if rec.ExitCode == 0 {
+				rec.ExitCode = 1
+			}
+		}
+		// Tokens saved = native_baseline - args - response. baseline is filled
+		// in once schema cache (F2) is wired; left at 0 until then.
+		rec.ArgsTokensEst = (rec.ArgsBytes + 3) / 4
+		rec.ResponseTokensEst = (rec.ResponseBytes + 3) / 4
+		if rec.NativeBaselineToks > 0 {
+			saved := rec.NativeBaselineToks - rec.ArgsTokensEst - rec.ResponseTokensEst
+			if saved < 0 {
+				saved = 0
+			}
+			rec.TokensSaved = saved
+		}
+		recordStats(rec)
+	}()
+
+	// Check for help, stdin, --example, and --validate-args modes.
 	wantHelp := false
 	useStdin := false
+	wantExample := false
+	wantValidate := false
 	var filteredArgs []string
 	for _, a := range rawArgs {
 		switch a {
@@ -182,6 +223,10 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 			wantHelp = true
 		case "--stdin":
 			useStdin = true
+		case "--example":
+			wantExample = true
+		case "--validate-args":
+			wantValidate = true
 		default:
 			filteredArgs = append(filteredArgs, a)
 		}
@@ -193,10 +238,12 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 	}
 	defer cleanup()
 
-	tools, err := client.ListTools(ctx)
+	tools, cacheHit, baseline, err := listToolsCached(ctx, serverName, sc, client)
 	if err != nil {
 		return fmt.Errorf("list tools: %w", err)
 	}
+	rec.SchemaCacheHit = cacheHit
+	rec.NativeBaselineToks = baseline
 
 	var tool *mcp.Tool
 	for i := range tools {
@@ -210,12 +257,24 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 		for _, t := range tools {
 			names = append(names, t.Name)
 		}
-		return fmt.Errorf("tool %q not found in server %q\nAvailable tools: %s\nRun: mcpx %s --help",
-			toolName, serverName, strings.Join(names, ", "), serverName)
+		rec.ExitCode = exitToolNotFound
+		hint := nearestTool(toolName, tools)
+		msg := fmt.Sprintf("tool %q not found in server %q", toolName, serverName)
+		if hint != "" {
+			msg += "\n  " + hint
+		}
+		msg += fmt.Sprintf("\n  Available: %s\n  Run: mcpx %s --help",
+			strings.Join(names, ", "), serverName)
+		return fmt.Errorf("%s", msg)
 	}
 
 	if wantHelp {
 		out.printToolHelp(serverName, tool)
+		return nil
+	}
+
+	if wantExample {
+		printExample(tool, opts.outputMode() == outputJSON)
 		return nil
 	}
 
@@ -226,7 +285,6 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 		if err != nil {
 			return fmt.Errorf("--stdin: %w", err)
 		}
-		// Merge CLI flags on top (flags win).
 		if len(filteredArgs) > 0 {
 			flagArgs, flagErr := parseToolFlagsPartial(tool, filteredArgs)
 			if flagErr != nil {
@@ -236,7 +294,6 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 				toolArgs[k] = v
 			}
 		}
-		// Validate required fields against merged result.
 		for _, req := range tool.InputSchema.Required {
 			if _, ok := toolArgs[req]; !ok {
 				return fmt.Errorf("required field %q not provided (via --stdin or flags)", req)
@@ -248,6 +305,21 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 			return enhanceParseError(err, serverName, tool)
 		}
 	}
+	rec.ArgsBytes = jsonBytes(toolArgs)
+	rec.Args = toolArgs
+
+	if wantValidate {
+		issues := validateArgs(tool, toolArgs)
+		if len(issues) == 0 {
+			fmt.Fprintln(os.Stdout, "ok")
+			return nil
+		}
+		for _, iss := range issues {
+			fmt.Fprintln(os.Stderr, iss.String())
+		}
+		rec.ExitCode = exitToolError
+		return fmt.Errorf("%d validation issue(s)", len(issues))
+	}
 
 	if opts.dryRun {
 		resolvedArgs, resolvedEnv, err := resolveServerConfig(sc)
@@ -258,7 +330,6 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 		return nil
 	}
 
-	// Apply per-call timeout if specified.
 	callCtx := ctx
 	if opts.timeout != "" {
 		d, err := time.ParseDuration(opts.timeout)
@@ -270,15 +341,16 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 		defer cancel()
 	}
 
-	// Evaluate security policies before calling the tool.
 	if globalSec != nil && globalSec.Enabled || sc.Security != nil {
 		eval := security.NewEvaluator(serverName, globalSec, sc.Security)
 		secResult := eval.Evaluate(toolName, toolArgs)
+		rec.PolicyAction = security.ActionString(secResult.Action)
+		rec.PolicyName = secResult.PolicyName
 
 		switch secResult.Action {
 		case security.ActionDeny:
-			// Log denial to audit if configured.
 			logAudit(globalSec, serverName, toolName, toolArgs, secResult)
+			rec.ExitCode = exitPolicyDenied
 			msg := fmt.Sprintf("server %q: policy %q denied tool %q\n  Reason: %s",
 				serverName, secResult.PolicyName, toolName, secResult.Message)
 			if secResult.Details != "" {
@@ -293,12 +365,27 @@ func runTool(ctx context.Context, serverName string, sc *config.ServerConfig, gl
 		}
 	}
 
-	result, err := client.CallTool(callCtx, toolName, toolArgs)
+	preCallEditGuard(serverName, toolName, toolArgs)
+
+	result, hit, err := callToolCached(callCtx, client, serverName, tool, toolArgs)
 	if err != nil {
 		return err
 	}
+	rec.ResponseBytes = jsonBytes(result)
+	rec.ResultCacheHit = hit
+	if result != nil {
+		preview, truncated := stats.TruncateForPreview(string(extractText(result)))
+		rec.ResultPreview = preview
+		rec.ResultTruncated = truncated
+	}
 
-	// Extract a specific field if --pick was specified.
+	if err := postCallEditGuard(serverName, toolName, toolArgs, projectRoot); err != nil {
+		// Surface as warning + non-zero exit. The edit went through (we already
+		// have a result); the file is broken so the agent should know now.
+		fmt.Fprintf(os.Stderr, "mcpx: %v\n", err)
+		rec.ExitCode = exitToolError
+	}
+
 	if opts.pick != "" {
 		val, err := pickField(result, opts.pick)
 		if err != nil {
@@ -512,10 +599,24 @@ func parseStdinJSON() (map[string]any, error) {
 }
 
 // enhanceParseError adds flag hints to parse errors (e.g. missing required flags).
+// Also surfaces a "did you mean" suggestion when the unknown flag is close to a known one.
 func enhanceParseError(err error, serverName string, tool *mcp.Tool) error {
 	msg := err.Error()
 
-	// Build flag summary for the hint.
+	// Try to extract typo from "unknown flag: --xxx" or similar.
+	suggestion := ""
+	if i := strings.Index(msg, "--"); i >= 0 {
+		typo := msg[i+2:]
+		if j := strings.IndexAny(typo, " \n\t"); j >= 0 {
+			typo = typo[:j]
+		}
+		if typo != "" {
+			if hint := nearestProperty(typo, tool.InputSchema.Properties); hint != "" {
+				suggestion = "  " + hint
+			}
+		}
+	}
+
 	required := make(map[string]bool)
 	for _, r := range tool.InputSchema.Required {
 		required[r] = true
@@ -532,8 +633,13 @@ func enhanceParseError(err error, serverName string, tool *mcp.Tool) error {
 		flags = append(flags, entry)
 	}
 
-	return fmt.Errorf("%s\n\nAvailable flags for %s:\n  %s\n\nRun: mcpx %s %s --help",
-		msg, tool.Name, strings.Join(flags, "\n  "), serverName, tool.Name)
+	out := msg
+	if suggestion != "" {
+		out += "\n" + suggestion
+	}
+	out += fmt.Sprintf("\n\nAvailable flags for %s:\n  %s\n\nRun: mcpx %s %s --help",
+		tool.Name, strings.Join(flags, "\n  "), serverName, tool.Name)
+	return fmt.Errorf("%s", out)
 }
 
 // parseToolFlags builds flags from a tool's JSON schema and parses rawArgs.
@@ -934,4 +1040,24 @@ func findProjectRoot() (string, error) {
 		}
 		dir = parent
 	}
+}
+func extractText(r *mcp.CallResult) string {
+	if r == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, c := range r.Content {
+		switch c.Type {
+		case "text", "":
+			b.WriteString(c.Text)
+		case "image", "audio":
+			b.WriteString("[" + c.Type + "]")
+		case "resource":
+			if c.Resource != nil && c.Resource.Text != "" {
+				b.WriteString(c.Resource.Text)
+			}
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
 }

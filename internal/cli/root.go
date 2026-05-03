@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime/debug"
 	"sort"
+	"strings"
 
 	"github.com/codestz/mcpx/internal/config"
 	"github.com/codestz/mcpx/internal/daemon"
@@ -27,6 +28,7 @@ type globalOpts struct {
 	dryRun     bool
 	pick       string
 	timeout    string
+	full       bool // verbose mode for server/tool help (default is compact)
 }
 
 func (o *globalOpts) outputMode() outputMode {
@@ -39,12 +41,15 @@ func (o *globalOpts) outputMode() outputMode {
 	return outputPretty
 }
 
-// Exit codes.
+// Exit codes. Documented in README + --help.
 const (
-	exitOK         = 0
-	exitToolError  = 1
-	exitConfigErr  = 2
-	exitConnectErr = 3
+	exitOK           = 0
+	exitToolError    = 1
+	exitConfigErr    = 2
+	exitConnectErr   = 3
+	exitTimeout      = 4
+	exitPolicyDenied = 5
+	exitToolNotFound = 6
 )
 
 // Execute is the main entry point for the CLI.
@@ -62,6 +67,11 @@ func Execute() {
 	root.PersistentFlags().BoolVar(&opts.quiet, "quiet", false, "Suppress output")
 	root.PersistentFlags().BoolVar(&opts.dryRun, "dry-run", false, "Show what would execute without running")
 
+	// Load config once — used for stats init and dynamic server commands.
+	cfg, _, cfgErr := config.Load()
+	initStats(cfg)
+	defer closeStats()
+
 	// Static commands.
 	root.AddCommand(versionCmd())
 	root.AddCommand(listCmd(opts))
@@ -70,16 +80,26 @@ func Execute() {
 	root.AddCommand(completionCmd())
 	root.AddCommand(pingCmd(opts))
 	root.AddCommand(secretCmd(opts))
+	root.AddCommand(findCmd(opts))
+	root.AddCommand(batchCmd(opts))
+	root.AddCommand(gainCmd(opts))
+	root.AddCommand(doctorCmd(opts))
 
 	// Hidden daemon runner command.
 	root.AddCommand(daemon.NewDaemonRunCommand())
+	root.AddCommand(uiRunCmd())
+	root.AddCommand(uiManageCmd())
+
+	// Always-on dashboard daemon — lazy spawn, opt-out via config or MCPX_UI=off.
+	startUIIfEnabled(cfg)
 
 	// Dynamic server commands from config.
-	if err := addServerCommands(root, opts); err != nil {
+	if cfgErr != nil {
 		out := newOutput(opts.outputMode())
-		out.errorf("config: %v", err)
+		out.errorf("config: %v", cfgErr)
 		os.Exit(exitConfigErr)
 	}
+	addServerCommandsFromCfg(root, cfg, opts)
 
 	if err := root.Execute(); err != nil {
 		out := newOutput(opts.outputMode())
@@ -95,6 +115,11 @@ func versionCmd() *cobra.Command {
 		Short: "Print mcpx version",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("mcpx %s\n", Version)
+			if strings.Contains(Version, "+dirty") {
+				fmt.Fprintln(os.Stderr,
+					"warning: this build was made from a dirty working tree. "+
+						"Behavior may differ from the published release. Run 'make install' on a clean tree before reporting bugs.")
+			}
 		},
 	}
 }
@@ -190,13 +215,10 @@ func completionCmd() *cobra.Command {
 }
 
 // addServerCommands reads the config and adds a subcommand for each server.
-func addServerCommands(root *cobra.Command, opts *globalOpts) error {
-	cfg, _, err := config.Load()
-	if err != nil {
-		return err
+func addServerCommandsFromCfg(root *cobra.Command, cfg *config.Config, opts *globalOpts) {
+	if cfg == nil {
+		return
 	}
-
-	// Sort server names for deterministic command order.
 	names := make([]string, 0, len(cfg.Servers))
 	for name := range cfg.Servers {
 		names = append(names, name)
@@ -207,10 +229,7 @@ func addServerCommands(root *cobra.Command, opts *globalOpts) error {
 		root.AddCommand(buildServerCommand(name, cfg.Servers[name], cfg.Security, opts))
 	}
 
-	// Daemon management commands.
 	root.AddCommand(daemon.NewDaemonManageCommand(names))
-
-	return nil
 }
 
 func joinOr(ss []string) string {

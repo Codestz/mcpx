@@ -1,66 +1,37 @@
-# mcpx — MCP Server CLI Proxy
+# mcpx
 
-mcpx wraps MCP servers into CLI tools. Call them via Bash instead of loading schemas into context.
+Call MCP tools through `mcpx <server> <tool> --flags`. Don't load native MCP — use the CLI commands below.
 
-## Quick Reference
+## Servers
 
-```bash
-mcpx list                        # List configured servers
-mcpx list <server> -v            # List all tools with flags
-mcpx <server> --help             # Show server tools
-mcpx <server> <tool> --help      # Show tool flags
-mcpx <server> <tool> --flags     # Call a tool
-mcpx <server> <tool> --stdin      # Read args from stdin JSON
-mcpx <server> <tool> --json       # Output raw JSON
-mcpx daemon status               # Show running daemons
-```
+- **serena** *(daemon)*
 
-## Configured Servers
+## Compose
 
-- **serena** — `serena` (daemon)
+| Need | How |
+|---|---|
+| Standard call | `mcpx <server> <tool> --flag value` |
+| Large arg from file | `--body @/path/to/file` |
+| Read body from stdin | `--body @-` or `--body -` |
+| Pass full args as JSON | `printf '{...}' \| mcpx <server> <tool> --stdin` |
+| Mix stdin + flags | `--stdin --flag value` (flags win) |
+| Extract one JSON field | `--pick path.to.field` |
+| Raw JSON output | `--json` |
+| Per-call timeout | `--timeout 60s` (Go duration) |
+| Show resolved command | `--dry-run` |
+| Args skeleton | `mcpx <server> <tool> --example` |
+| Type-check args | `mcpx <server> <tool> --validate-args ...` |
 
-## Usage Pattern
+## Discover
 
-1. Discover: `mcpx <server> --help` to see available tools
-2. Inspect: `mcpx <server> <tool> --help` to see flags
-3. Call: `mcpx <server> <tool> --flag value`
-4. For long args: `printf '{"key":"value"}' | mcpx <server> <tool> --stdin`
+| Need | How |
+|---|---|
+| Find the right tool by intent | `mcpx find "<query>"` |
+| One-line list of a server's tools | `mcpx <server> --help` |
+| Full schema for one tool | `mcpx <server> <tool> --help` |
+| Run many tool calls in parallel | `mcpx batch < calls.jsonl` |
 
-## Large Content: @file syntax
+## Exit codes
 
-Any string flag accepts `@/path` to read from a file or `@-`/`-` to read from stdin:
-```bash
-mcpx <server> <tool> --body @/tmp/code.go   # Read file into --body
-mcpx <server> <tool> --body @-              # Read stdin into --body
-mcpx <server> <tool> --body -               # Same (backward compat)
-```
-
-## Output Extraction: --pick
-
-Extract a JSON field from the result without jq:
-```bash
-mcpx <server> <tool> --pick field.path      # Dot-separated path
-mcpx <server> <tool> --pick items.0.name    # Array index access
-```
-
-## Timeout Override: --timeout
-
-Override the default call timeout for a single invocation:
-```bash
-mcpx <server> <tool> --timeout 60s          # Go duration format
-```
-
-## Stdin Merge
-
-`--stdin` can be combined with CLI flags. Flags win on conflict:
-```bash
-echo '{"body":"content"}' | mcpx <server> <tool> --stdin --name_path Foo
-```
-
-## Tips for AI Agents
-
-- Use `--body @/tmp/file` for large content to avoid shell escaping
-- Use `--pick field` instead of piping through jq for single fields
-- Combine `--stdin` with flags for mixed large+small arguments
-- Use `--timeout 120s` for long-running operations
+`0` ok · `1` tool error · `2` config · `3` connection · `4` timeout · `5` policy denied · `6` tool not found.
 @SERENA.md

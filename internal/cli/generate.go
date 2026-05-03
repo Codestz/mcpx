@@ -14,6 +14,9 @@ import (
 
 // runGenerate connects to a server, fetches tools (and prompts/resources if supported),
 // and generates a concise Markdown reference file for Claude Code.
+//
+// Uses the cached tools-list path so a configure run populates the schema cache
+// for any server we hadn't yet touched — agent's first real call lands warm.
 func runGenerate(ctx context.Context, serverName string, sc *config.ServerConfig, global bool, format string) error {
 	client, cleanup, err := connectServer(ctx, serverName, sc)
 	if err != nil {
@@ -21,7 +24,7 @@ func runGenerate(ctx context.Context, serverName string, sc *config.ServerConfig
 	}
 	defer cleanup()
 
-	tools, err := client.ListTools(ctx)
+	tools, _, _, err := listToolsCached(ctx, serverName, sc, client)
 	if err != nil {
 		return fmt.Errorf("list tools: %w", err)
 	}
@@ -81,110 +84,162 @@ func runGenerate(ctx context.Context, serverName string, sc *config.ServerConfig
 	return nil
 }
 
-// generateServerMDWithFormat dispatches to the right format generator.
+// generateServerMDWithFormat is kept for the configureCmd flag surface but
+// now collapses to a single agent-grounded format. The `format` parameter is
+// accepted for backward compatibility and ignored.
 func generateServerMDWithFormat(serverName string, tools []mcp.Tool, prompts []mcp.Prompt, resources []mcp.Resource, format string) string {
-	if format == "compact" {
-		return generateServerMDCompact(serverName, tools, prompts, resources)
-	}
+	_ = format
 	return generateServerMD(serverName, tools, prompts, resources)
 }
 
-// generateServerMD creates a concise reference for a server's tools, prompts, and resources.
-// Optimized for AI consumption: compact, all flags visible, ~100 lines max.
+// generateServerMD produces an agent-optimized reference for one MCP server.
+//
+// Design priorities (in order):
+//   1. A "tool selector" table at the top — one row per tool, three columns
+//      (tool, what it does, required flags). This is the primary surface the
+//      agent reads when picking a tool.
+//   2. A compact reference at the bottom — every tool's name + required flags
+//      on one line, for fast scanning when the selector matches multiple.
+//   3. Prompts and resources as terse bullet lists; agents don't reach for
+//      them often, so they don't earn full sections.
+//
+// No per-tool full schema tables. The agent runs `mcpx <server> <tool> --help`
+// for the full schema or `--example` for a JSON skeleton when actually calling.
 func generateServerMD(serverName string, tools []mcp.Tool, prompts []mcp.Prompt, resources []mcp.Resource) string {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("# %s — mcpx tool reference\n\n", serverName))
-	b.WriteString(fmt.Sprintf("Server with %d tools. Call via: `mcpx %s <tool> --flags`\n\n", len(tools), serverName))
+	b.WriteString(fmt.Sprintf("# %s\n\n", serverName))
+	b.WriteString(fmt.Sprintf("`mcpx %s <tool> --flags` — %d tools. Use `--help` / `--example` / `--validate-args` per tool.\n\n",
+		serverName, len(tools)))
 
+	b.WriteString("## Tool selector\n\n")
+	b.WriteString("| Tool | What it does | Required |\n")
+	b.WriteString("|---|---|---|\n")
 	for _, t := range tools {
-		b.WriteString(fmt.Sprintf("## %s\n", t.Name))
-
-		if t.Description != "" {
-			// First sentence only for brevity.
-			desc := firstSentence(t.Description)
-			b.WriteString(fmt.Sprintf("%s\n", desc))
+		desc := firstSentence(t.Description)
+		if desc == "" {
+			desc = "(no description)"
 		}
+		desc = strings.ReplaceAll(desc, "|", "\\|")
+		req := requiredFlagList(t)
+		b.WriteString(fmt.Sprintf("| `%s` | %s | %s |\n", t.Name, desc, req))
+	}
+	b.WriteString("\n")
 
-		if len(t.InputSchema.Properties) == 0 {
-			b.WriteString("```\nmcpx " + serverName + " " + t.Name + "\n```\n\n")
-			continue
-		}
-
-		required := make(map[string]bool)
-		for _, r := range t.InputSchema.Required {
-			required[r] = true
-		}
-
-		propNames := make([]string, 0, len(t.InputSchema.Properties))
-		for name := range t.InputSchema.Properties {
-			propNames = append(propNames, name)
-		}
-		sort.Strings(propNames)
-
-		// Build example command with required flags.
-		var exampleParts []string
-		exampleParts = append(exampleParts, "mcpx", serverName, t.Name)
-
-		b.WriteString("| Flag | Type | Req | Description |\n")
-		b.WriteString("|---|---|---|---|\n")
-
-		for _, name := range propNames {
-			prop := t.InputSchema.Properties[name]
-			req := ""
-			if required[name] {
-				req = "yes"
-				exampleParts = append(exampleParts, fmt.Sprintf("--%s <val>", name))
-			}
-			desc := compactDesc(prop.Description)
-			if prop.Default != nil {
-				desc += fmt.Sprintf(" (default: %v)", prop.Default)
-			}
-			b.WriteString(fmt.Sprintf("| `--%s` | %s | %s | %s |\n",
-				name, flagTypeLabel(prop.Type), req, desc))
-		}
-
-		b.WriteString(fmt.Sprintf("```\n%s\n```\n\n", strings.Join(exampleParts, " ")))
+	if hasEditTools(tools) {
+		b.WriteString("## Edit-tool safety\n\n")
+		b.WriteString("For `replace_symbol_body`, body must start AFTER the declaration keyword — the keyword is preserved by the server. mcpx warns on duplicates and (for `.go`) re-parses the file post-edit.\n\n")
+		b.WriteString("| Language | ✓ correct | ✗ wrong |\n")
+		b.WriteString("|---|---|---|\n")
+		b.WriteString("| Go | `Foo struct{...}` / `Foo() error {...}` | `type Foo...` / `func Foo...` |\n")
+		b.WriteString("| Python | `foo():\\n    ...` | `def foo():` |\n")
+		b.WriteString("| TS / JS | `bar() { ... }` | `function bar()` / `class Bar` |\n")
+		b.WriteString("| Rust | `foo() { ... }` | `fn foo()` / `struct Foo` |\n\n")
 	}
 
+	if hasSymbolSearch(tools) {
+		b.WriteString("## Notes\n\n")
+		b.WriteString("- Symbol-aware lookups (`find_symbol`) are faster and more accurate than text search (`search_for_pattern`) for code symbols — prefer them.\n\n")
+	}
+
+	b.WriteString("## Compact reference\n\n")
+	for _, t := range tools {
+		propNames := sortedPropNames(t)
+		req := map[string]bool{}
+		for _, r := range t.InputSchema.Required {
+			req[r] = true
+		}
+		var parts []string
+		for _, name := range propNames {
+			prop := t.InputSchema.Properties[name]
+			entry := fmt.Sprintf("--%s <%s>", name, flagTypeLabel(prop.Type))
+			if req[name] {
+				entry += "*"
+			}
+			parts = append(parts, entry)
+		}
+		if len(parts) == 0 {
+			b.WriteString(fmt.Sprintf("- `%s`\n", t.Name))
+		} else {
+			b.WriteString(fmt.Sprintf("- `%s` %s\n", t.Name, strings.Join(parts, " ")))
+		}
+	}
+	b.WriteString("\n`*` = required\n")
+
 	if len(prompts) > 0 {
-		b.WriteString(fmt.Sprintf("## Prompts (%d)\n\n", len(prompts)))
-		b.WriteString(fmt.Sprintf("Usage: `mcpx %s prompt <name> [--arg value ...]`\n\n", serverName))
+		b.WriteString(fmt.Sprintf("\n## Prompts (%d)\n\n", len(prompts)))
+		b.WriteString(fmt.Sprintf("`mcpx %s prompt <name> [--arg value ...]`\n\n", serverName))
 		for _, p := range prompts {
-			b.WriteString(fmt.Sprintf("**%s**", p.Name))
+			line := fmt.Sprintf("- `%s`", p.Name)
 			if p.Description != "" {
-				b.WriteString(" — " + firstSentence(p.Description))
+				line += " — " + firstSentence(p.Description)
 			}
-			b.WriteString("\n")
-			if len(p.Arguments) > 0 {
-				var args []string
-				for _, a := range p.Arguments {
-					entry := fmt.Sprintf("--%s", a.Name)
-					if a.Required {
-						entry += " *"
-					}
-					args = append(args, entry)
-				}
-				b.WriteString("  " + strings.Join(args, ", ") + "\n")
-			}
-			b.WriteString("\n")
+			b.WriteString(line + "\n")
 		}
 	}
 
 	if len(resources) > 0 {
-		b.WriteString(fmt.Sprintf("## Resources (%d)\n\n", len(resources)))
-		b.WriteString(fmt.Sprintf("Usage: `mcpx %s resource read <uri>`\n\n", serverName))
+		b.WriteString(fmt.Sprintf("\n## Resources (%d)\n\n", len(resources)))
+		b.WriteString(fmt.Sprintf("`mcpx %s resource read <uri>`\n\n", serverName))
 		for _, r := range resources {
-			b.WriteString(fmt.Sprintf("- `%s`", r.URI))
+			line := fmt.Sprintf("- `%s`", r.URI)
 			if r.Name != "" {
-				b.WriteString(fmt.Sprintf(" — %s", r.Name))
+				line += " — " + r.Name
 			}
-			b.WriteString("\n")
+			b.WriteString(line + "\n")
 		}
-		b.WriteString("\n")
 	}
 
 	return b.String()
+}
+
+// requiredFlagList renders a tool's required flags as a compact comma string
+// for the selector table. Empty when no flags are required.
+func requiredFlagList(t mcp.Tool) string {
+	if len(t.InputSchema.Required) == 0 {
+		return "—"
+	}
+	out := make([]string, 0, len(t.InputSchema.Required))
+	for _, r := range t.InputSchema.Required {
+		out = append(out, "`--"+r+"`")
+	}
+	return strings.Join(out, " ")
+}
+
+// sortedPropNames returns a tool's input property names in stable order.
+func sortedPropNames(t mcp.Tool) []string {
+	out := make([]string, 0, len(t.InputSchema.Properties))
+	for name := range t.InputSchema.Properties {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// hasEditTools detects servers that expose body-mutation tools so we can
+// emit the keyword-trap reminder in the per-server doc.
+func hasEditTools(tools []mcp.Tool) bool {
+	for _, t := range tools {
+		if bodyMutatingTools[t.Name] {
+			return true
+		}
+	}
+	return false
+}
+
+// hasSymbolSearch detects servers that expose both symbol-aware and text-based
+// search tools, so the doc can advise the agent to prefer the structured one.
+func hasSymbolSearch(tools []mcp.Tool) bool {
+	hasSym, hasText := false, false
+	for _, t := range tools {
+		switch t.Name {
+		case "find_symbol":
+			hasSym = true
+		case "search_for_pattern":
+			hasText = true
+		}
+	}
+	return hasSym && hasText
 }
 
 // firstSentence returns the first sentence of a string (up to first period+space or newline).
@@ -219,83 +274,3 @@ func compactDesc(s string) string {
 	return s
 }
 
-// generateServerMDCompact creates a minimal one-line-per-tool reference.
-// Optimized for maximum token efficiency: ~50% smaller than table format.
-func generateServerMDCompact(serverName string, tools []mcp.Tool, prompts []mcp.Prompt, resources []mcp.Resource) string {
-	var b strings.Builder
-
-	b.WriteString(fmt.Sprintf("# %s (%d tools)\n\n", serverName, len(tools)))
-	b.WriteString(fmt.Sprintf("Usage: `mcpx %s <tool> --flags`\n\n", serverName))
-
-	for _, t := range tools {
-		required := make(map[string]bool)
-		for _, r := range t.InputSchema.Required {
-			required[r] = true
-		}
-
-		// Tool name + short description
-		desc := ""
-		if t.Description != "" {
-			desc = " — " + firstSentence(t.Description)
-		}
-		b.WriteString(fmt.Sprintf("**%s**%s\n", t.Name, desc))
-
-		if len(t.InputSchema.Properties) > 0 {
-			propNames := make([]string, 0, len(t.InputSchema.Properties))
-			for name := range t.InputSchema.Properties {
-				propNames = append(propNames, name)
-			}
-			sort.Strings(propNames)
-
-			var flags []string
-			for _, name := range propNames {
-				prop := t.InputSchema.Properties[name]
-				entry := fmt.Sprintf("--%s <%s>", name, flagTypeLabel(prop.Type))
-				if required[name] {
-					entry += " *"
-				}
-				flags = append(flags, entry)
-			}
-			b.WriteString("  " + strings.Join(flags, ", ") + "\n")
-		}
-		b.WriteString("\n")
-	}
-
-	b.WriteString("`*` = required\n")
-
-	if len(prompts) > 0 {
-		b.WriteString(fmt.Sprintf("\n## Prompts (%d)\n\n", len(prompts)))
-		for _, p := range prompts {
-			desc := ""
-			if p.Description != "" {
-				desc = " — " + firstSentence(p.Description)
-			}
-			b.WriteString(fmt.Sprintf("**%s**%s\n", p.Name, desc))
-			if len(p.Arguments) > 0 {
-				var args []string
-				for _, a := range p.Arguments {
-					entry := fmt.Sprintf("--%s", a.Name)
-					if a.Required {
-						entry += " *"
-					}
-					args = append(args, entry)
-				}
-				b.WriteString("  " + strings.Join(args, ", ") + "\n")
-			}
-			b.WriteString("\n")
-		}
-	}
-
-	if len(resources) > 0 {
-		b.WriteString(fmt.Sprintf("\n## Resources (%d)\n\n", len(resources)))
-		for _, r := range resources {
-			b.WriteString(fmt.Sprintf("- `%s`", r.URI))
-			if r.Name != "" {
-				b.WriteString(" — " + r.Name)
-			}
-			b.WriteString("\n")
-		}
-	}
-
-	return b.String()
-}

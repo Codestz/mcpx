@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>mcpx</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/assets/style.css?t={{.Token}}" />
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="logo">mcpx</span>
+      <span class="conn" id="conn-dot" title="connection status"></span>
+    </div>
+
+    <div class="section">
+      <div class="section-title">projects</div>
+      <ul id="project-list" class="vlist"></ul>
+    </div>
+
+    <div class="section">
+      <div class="section-title">servers</div>
+      <ul id="server-list" class="vlist"></ul>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="section help">
+      <div class="section-title">cli</div>
+      <pre>mcpx find &lt;query&gt;
+mcpx gain
+mcpx batch &lt; calls.jsonl
+mcpx ui status</pre>
+    </div>
+  </aside>
+
+  <main class="content">
+
+    <header class="topbar">
+      <div class="title">
+        <span id="scope-label">…</span>
+        <span class="dim sep">·</span>
+        <span class="dim" id="scope-window">7 days</span>
+      </div>
+      <nav class="tabs" id="time-tabs">
+        <button data-since="1h">1h</button>
+        <button data-since="24h">24h</button>
+        <button data-since="168h" class="active">7d</button>
+        <button data-since="720h">30d</button>
+        <button data-since="all">all</button>
+      </nav>
+      <div class="freshness">
+        <span class="dim small" id="freshness">just now</span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-left">
+        <div class="hero-label">
+          tokens saved
+          <span class="info-badge" tabindex="0" aria-label="estimate methodology"
+                data-tooltip="Token counts are estimates: bytes ÷ 4. Real Claude tokenization differs by ~5–10%.">
+            ?
+          </span>
+        </div>
+        <div class="hero-value" id="hero-saved">—</div>
+        <div class="hero-foot dim" id="hero-foot">vs native MCP loading · estimate</div>
+      </div>
+      <div class="hero-right">
+        <div class="eff-label">
+          efficiency
+          <span class="dim small" id="eff-pct">—</span>
+        </div>
+        <div class="eff-bar">
+          <div class="eff-bar-fill" id="eff-fill" style="width:0%"></div>
+        </div>
+        <div class="eff-foot dim small">
+          <span id="eff-saved">—</span>
+          <span class="sep">/</span>
+          <span id="eff-native">—</span>
+          <span class="sep">native</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="tile-row">
+      <div class="tile">
+        <div class="tile-label">calls</div>
+        <div class="tile-value" id="t-calls">—</div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">cache hit</div>
+        <div class="tile-value" id="t-cache">—</div>
+        <div class="tile-foot dim" id="t-cache-foot"></div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">errors</div>
+        <div class="tile-value" id="t-errors">—</div>
+      </div>
+      <div class="tile">
+        <div class="tile-label">avg latency</div>
+        <div class="tile-value" id="t-avg">—</div>
+        <div class="tile-foot dim" id="t-avg-foot">p95 —</div>
+      </div>
+    </section>
+
+    <section class="row">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">top tools</span>
+          <span class="card-sub dim">by calls</span>
+        </div>
+        <table id="tool-table" class="bar-table"></table>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">top savings</span>
+          <span class="card-sub dim">vs native MCP</span>
+        </div>
+        <table id="save-table" class="bar-table"></table>
+      </div>
+    </section>
+
+    <section class="row">
+      <div class="card grow">
+        <div class="card-head">
+          <span class="card-title">server health</span>
+        </div>
+        <div id="server-health" class="health-grid"></div>
+      </div>
+    </section>
+
+    <section class="card grow">
+      <div class="card-head">
+        <span class="card-title">live tail</span>
+        <span class="card-sub dim">click row to inspect</span>
+        <input id="tail-filter" class="tail-filter" placeholder="filter (server.tool, regex)" />
+      </div>
+      <div id="live-tail" class="tail"></div>
+    </section>
+  </main>
+
+  <aside id="drawer" class="drawer hidden">
+    <header class="drawer-head">
+      <div>
+        <div class="drawer-title" id="drawer-title">—</div>
+        <div class="dim small" id="drawer-sub">—</div>
+      </div>
+      <button id="drawer-close" class="ghost">esc</button>
+    </header>
+    <div class="drawer-body">
+      <div class="kv-grid" id="drawer-kv"></div>
+      <div class="card-head"><span class="card-title">arguments</span></div>
+      <pre class="json" id="drawer-args"></pre>
+      <div class="card-head"><span class="card-title">response</span></div>
+      <pre class="json" id="drawer-result"></pre>
+      <div class="drawer-actions">
+        <button id="drawer-copy" class="primary">copy json</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>window.MCPX_TOKEN = "{{.Token}}";</script>
+<script src="/assets/app.js?t={{.Token}}"></script>
+</body>
+</html>

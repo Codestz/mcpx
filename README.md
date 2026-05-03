@@ -281,24 +281,33 @@ mcpx ping serena               # health check with latency
 ## CLI Reference
 
 ```
-mcpx <server> <tool> [flags]     Call a tool
-mcpx <server> <tool> --help      Show tool help
-mcpx <server> <tool> --stdin     Read args from stdin JSON
-mcpx <server> --help             List all tools
+mcpx <server> <tool> [flags]      Call a tool
+mcpx <server> <tool> --help       Show tool help
+mcpx <server> <tool> --stdin      Read args from stdin JSON
+mcpx <server> <tool> --example    JSON skeleton for the tool's args
+mcpx <server> <tool> --validate-args ...  Type-check args without invoking
+mcpx <server> --help              List all tools (compact); --full for descriptions
 
-mcpx <server> info               Server capabilities
-mcpx <server> prompt list|<name> Prompts
-mcpx <server> resource list|read Resources
+mcpx <server> info                Server capabilities
+mcpx <server> prompt list|<name>  Prompts
+mcpx <server> resource list|read  Resources
 
-mcpx list                        List servers
-mcpx list <server> -v            List tools with flags
-mcpx ping <server>               Health check
-mcpx init                        Import .mcp.json
+mcpx find <query>                 Rank tools across servers by intent (BM25)
+mcpx batch < calls.jsonl          Run many calls in parallel (NDJSON in/out)
+mcpx gain                         Token-savings dashboard (TUI)
+mcpx doctor                       Config + connectivity diagnostics
+mcpx ui status|stop|open|disable  Web dashboard daemon controls
 
-mcpx secret set|list|remove      Keychain secrets
-mcpx daemon status|stop|stop-all Daemon management
-mcpx version                     Print version
-mcpx completion bash|zsh|fish    Shell completions
+mcpx list                         List servers
+mcpx list <server> -v             List tools with flags
+mcpx ping <server>                Health check
+mcpx init                         Import .mcp.json
+mcpx configure                    Generate agent reference docs (MCPX.md + per-server)
+
+mcpx secret set|list|remove       Keychain secrets
+mcpx daemon status|stop|stop-all  Daemon management
+mcpx version                      Print version
+mcpx completion bash|zsh|fish     Shell completions
 ```
 
 ### Global flags
@@ -317,6 +326,11 @@ mcpx completion bash|zsh|fish    Shell completions
 |------|---------|
 | 0 | Success |
 | 1 | Tool error |
+| 2 | Config error |
+| 3 | Connection error |
+| 4 | Timeout |
+| 5 | Policy denied |
+| 6 | Tool not found |
 | 2 | Config error |
 | 3 | Connection error |
 

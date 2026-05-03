@@ -13,23 +13,22 @@ import (
 
 func configureCmd() *cobra.Command {
 	var global bool
-	var format string
+	var format string // accepted for backward compatibility; ignored.
 
 	cmd := &cobra.Command{
 		Use:   "configure",
-		Short: "Set up mcpx for Claude Code (creates MCPX.md + per-server docs)",
-		Long: `Configure mcpx for Claude Code integration.
+		Short: "Set up mcpx for Claude Code (writes MCPX.md + per-server docs)",
+		Long: `Generate the agent-facing reference docs that teach Claude Code (and any
+mcpx-aware coding agent) how to use the configured MCP servers.
 
-Creates MCPX.md (quick reference), connects to each configured server,
-generates per-server tool docs (SERVER.md), and updates CLAUDE.md references.
+Writes:
+  - MCPX.md       composition + discover + edit-safety + exit codes
+  - <SERVER>.md   tool-selector table + compact reference, per server
+  - CLAUDE.md     adds @MCPX.md and @<SERVER>.md references
 
-Formats:
-  default  — tables with flag/type/required/description columns
-  compact  — one line per tool, flags inline (smaller, ~50% fewer tokens)`,
+Idempotent — re-run after adding/removing servers.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if format != "default" && format != "compact" {
-				return fmt.Errorf("invalid format %q: must be 'default' or 'compact'", format)
-			}
+			_ = format // legacy flag
 
 			cfg, _, err := config.Load()
 			if err != nil {
@@ -78,93 +77,75 @@ Formats:
 			if global {
 				scope = "global"
 			}
-			fmt.Printf("\nDone! Claude Code will load mcpx references at %s scope (format: %s).\n", scope, format)
+			fmt.Printf("\nDone! Claude Code will load mcpx references at %s scope.\n", scope)
 
 			return nil
 		},
 	}
 
 	cmd.Flags().BoolVar(&global, "global", false, "Configure globally (~/.claude/) instead of project (.claude/)")
-	cmd.Flags().StringVar(&format, "format", "default", "Doc format: 'default' (tables) or 'compact' (one-line per tool)")
+	cmd.Flags().StringVar(&format, "format", "default", "Deprecated; format is now agent-optimized by default")
+	_ = cmd.Flags().MarkHidden("format")
 
 	return cmd
 }
 
-// generateMCPXMD creates the content for MCPX.md.
+// generateMCPXMD creates the content for MCPX.md — the always-loaded reference
+// an AI agent uses to call mcpx-wrapped MCP servers.
+//
+// Designed for a coding agent reading the file at session start. Tabular,
+// composition-first, no human-ops content (caching internals, observability,
+// dashboard, doctor — all excluded; they're available via mcpx commands when
+// the human needs them, but they don't help the agent pick a tool).
 func generateMCPXMD(cfg *config.Config) string {
 	var b strings.Builder
 
-	b.WriteString("# mcpx — MCP Server CLI Proxy\n\n")
-	b.WriteString("mcpx wraps MCP servers into CLI tools. Call them via Bash instead of loading schemas into context.\n\n")
+	b.WriteString("# mcpx\n\n")
+	b.WriteString("Call MCP tools through `mcpx <server> <tool> --flags`. ")
+	b.WriteString("Don't load native MCP — use the CLI commands below.\n\n")
 
-	b.WriteString("## Quick Reference\n\n")
-	b.WriteString("```bash\n")
-	b.WriteString("mcpx list                        # List configured servers\n")
-	b.WriteString("mcpx list <server> -v            # List all tools with flags\n")
-	b.WriteString("mcpx <server> --help             # Show server tools\n")
-	b.WriteString("mcpx <server> <tool> --help      # Show tool flags\n")
-	b.WriteString("mcpx <server> <tool> --flags     # Call a tool\n")
-	b.WriteString("mcpx <server> <tool> --stdin      # Read args from stdin JSON\n")
-	b.WriteString("mcpx <server> <tool> --json       # Output raw JSON\n")
-	b.WriteString("mcpx daemon status               # Show running daemons\n")
-	b.WriteString("mcpx <server> info               # Show server capabilities\n")
-	b.WriteString("mcpx <server> prompt list         # List available prompts\n")
-	b.WriteString("mcpx <server> prompt <name> --args # Get a prompt\n")
-	b.WriteString("mcpx <server> resource list       # List available resources\n")
-	b.WriteString("mcpx <server> resource read <uri> # Read a resource\n")
-	b.WriteString("```\n\n")
-
-	b.WriteString("## Configured Servers\n\n")
+	b.WriteString("## Servers\n\n")
 	if len(cfg.Servers) == 0 {
-		b.WriteString("No servers configured. Run `mcpx init` to import from `.mcp.json`.\n")
+		b.WriteString("(none — run `mcpx init`)\n\n")
 	} else {
 		for name, sc := range cfg.Servers {
-			b.WriteString(fmt.Sprintf("- **%s** — `%s`", name, sc.Command))
+			b.WriteString(fmt.Sprintf("- **%s**", name))
 			if sc.Daemon {
-				b.WriteString(" (daemon)")
+				b.WriteString(" *(daemon)*")
+			}
+			if sc.Transport != "" && sc.Transport != "stdio" {
+				b.WriteString(fmt.Sprintf(" *(%s)*", sc.Transport))
 			}
 			b.WriteString("\n")
 		}
+		b.WriteString("\n")
 	}
 
-	b.WriteString("\n## Usage Pattern\n\n")
-	b.WriteString("1. Discover: `mcpx <server> --help` to see available tools\n")
-	b.WriteString("2. Inspect: `mcpx <server> <tool> --help` to see flags\n")
-	b.WriteString("3. Call: `mcpx <server> <tool> --flag value`\n")
-	b.WriteString("4. For long args: `printf '{\"key\":\"value\"}' | mcpx <server> <tool> --stdin`\n")
+	b.WriteString("## Compose\n\n")
+	b.WriteString("| Need | How |\n")
+	b.WriteString("|---|---|\n")
+	b.WriteString("| Standard call | `mcpx <server> <tool> --flag value` |\n")
+	b.WriteString("| Large arg from file | `--body @/path/to/file` |\n")
+	b.WriteString("| Read body from stdin | `--body @-` or `--body -` |\n")
+	b.WriteString("| Pass full args as JSON | `printf '{...}' \\| mcpx <server> <tool> --stdin` |\n")
+	b.WriteString("| Mix stdin + flags | `--stdin --flag value` (flags win) |\n")
+	b.WriteString("| Extract one JSON field | `--pick path.to.field` |\n")
+	b.WriteString("| Raw JSON output | `--json` |\n")
+	b.WriteString("| Per-call timeout | `--timeout 60s` (Go duration) |\n")
+	b.WriteString("| Show resolved command | `--dry-run` |\n")
+	b.WriteString("| Args skeleton | `mcpx <server> <tool> --example` |\n")
+	b.WriteString("| Type-check args | `mcpx <server> <tool> --validate-args ...` |\n\n")
 
-	b.WriteString("\n## Large Content: @file syntax\n\n")
-	b.WriteString("Any string flag accepts `@/path` to read from a file or `@-`/`-` to read from stdin:\n")
-	b.WriteString("```bash\n")
-	b.WriteString("mcpx <server> <tool> --body @/tmp/code.go   # Read file into --body\n")
-	b.WriteString("mcpx <server> <tool> --body @-              # Read stdin into --body\n")
-	b.WriteString("mcpx <server> <tool> --body -               # Same (backward compat)\n")
-	b.WriteString("```\n")
+	b.WriteString("## Discover\n\n")
+	b.WriteString("| Need | How |\n")
+	b.WriteString("|---|---|\n")
+	b.WriteString("| Find the right tool by intent | `mcpx find \"<query>\"` |\n")
+	b.WriteString("| One-line list of a server's tools | `mcpx <server> --help` |\n")
+	b.WriteString("| Full schema for one tool | `mcpx <server> <tool> --help` |\n")
+	b.WriteString("| Run many tool calls in parallel | `mcpx batch < calls.jsonl` |\n\n")
 
-	b.WriteString("\n## Output Extraction: --pick\n\n")
-	b.WriteString("Extract a JSON field from the result without jq:\n")
-	b.WriteString("```bash\n")
-	b.WriteString("mcpx <server> <tool> --pick field.path      # Dot-separated path\n")
-	b.WriteString("mcpx <server> <tool> --pick items.0.name    # Array index access\n")
-	b.WriteString("```\n")
-
-	b.WriteString("\n## Timeout Override: --timeout\n\n")
-	b.WriteString("Override the default call timeout for a single invocation:\n")
-	b.WriteString("```bash\n")
-	b.WriteString("mcpx <server> <tool> --timeout 60s          # Go duration format\n")
-	b.WriteString("```\n")
-
-	b.WriteString("\n## Stdin Merge\n\n")
-	b.WriteString("`--stdin` can be combined with CLI flags. Flags win on conflict:\n")
-	b.WriteString("```bash\n")
-	b.WriteString("echo '{\"body\":\"content\"}' | mcpx <server> <tool> --stdin --name_path Foo\n")
-	b.WriteString("```\n")
-
-	b.WriteString("\n## Tips for AI Agents\n\n")
-	b.WriteString("- Use `--body @/tmp/file` for large content to avoid shell escaping\n")
-	b.WriteString("- Use `--pick field` instead of piping through jq for single fields\n")
-	b.WriteString("- Combine `--stdin` with flags for mixed large+small arguments\n")
-	b.WriteString("- Use `--timeout 120s` for long-running operations\n")
+	b.WriteString("## Exit codes\n\n")
+	b.WriteString("`0` ok · `1` tool error · `2` config · `3` connection · `4` timeout · `5` policy denied · `6` tool not found.\n")
 
 	return b.String()
 }
